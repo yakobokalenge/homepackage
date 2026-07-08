@@ -382,7 +382,7 @@ async function handleSubmit() {
         </div>
 
         <!-- INTERACTIVE EXAM LAYOUT -->
-        <div v-else class="space-y-6">
+        <div v-else-if="questions.length > 0" class="space-y-6">
           <!-- Question Navigator -->
           <div class="flex flex-wrap gap-2">
             <button v-for="(q, i) in questions" :key="q.id" @click="currentIndex = i"
@@ -394,7 +394,7 @@ async function handleSubmit() {
           <!-- Question Content -->
           <div class="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-8">
             <div class="flex items-center gap-2 mb-4">
-              <span class="px-3 py-1 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 text-xs font-medium rounded-full capitalize">{{ currentQ.type.replace('_', ' ') }}</span>
+              <span class="px-3 py-1 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 text-xs font-medium rounded-full capitalize">{{ currentQ.question_type.replace('_', ' ') }}</span>
             </div>
             <h3 class="text-xl font-semibold text-gray-900 dark:text-white mb-6 leading-relaxed">{{ currentQ.text }}</h3>
 
@@ -408,7 +408,7 @@ async function handleSubmit() {
 
             <!-- Fill Blank / Essay -->
             <div v-else>
-              <textarea v-if="currentQ.type === 'essay'" v-model="answers[currentQ.id]" @blur="handleTextAnswerSave(currentQ.id, 'essay')" rows="8"
+              <textarea v-if="currentQ.question_type === 'essay'" v-model="answers[currentQ.id]" @blur="handleTextAnswerSave(currentQ.id, 'essay')" rows="8"
                 class="w-full p-4 rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:outline-none resize-none"
                 placeholder="Write your answer here..."></textarea>
               <input v-else v-model="answers[currentQ.id]" @blur="handleTextAnswerSave(currentQ.id, 'fill_blank')"
@@ -432,6 +432,13 @@ async function handleSubmit() {
               {{ t('exam.submit') }}
             </button>
           </div>
+        </div>
+
+        <!-- Fallback when no questions are present -->
+        <div v-else class="text-center py-12 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl shadow-sm">
+          <span class="text-3xl block mb-2">⚠️</span>
+          <p class="text-gray-500 dark:text-gray-400 font-bold">No questions found</p>
+          <p class="text-xs text-gray-450 mt-1">This interactive assessment does not contain any questions. Please contact your teacher.</p>
         </div>
 
         <!-- Confirm Modal -->

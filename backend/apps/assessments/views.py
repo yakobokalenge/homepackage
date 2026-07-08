@@ -72,67 +72,182 @@ class AssessmentViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['post'], url_path='generate-questions-ai')
     def generate_questions_ai(self, request, pk=None):
-        """Generate questions using AI template matching and associate them with this assessment."""
+        """Generate questions using AI (OpenAI / Gemini / Claude) and associate them with this assessment."""
         assessment = self.get_object()
-        
+
+        from django.conf import settings as django_settings
         from apps.content.models import Question
         from apps.content.serializers import QuestionCreateSerializer
+        from apps.content.ai_generators import AIQuestionGenerator, PROVIDER_LABELS
         from .models import AssessmentQuestion
-        import uuid
-        
-        question_type = request.data.get('question_type', 'mcq')
+
+        # ── Parse request data ──────────────────────────────────────
+        question_types = request.data.get('question_types', [])
+        if not question_types:
+            single_type = request.data.get('question_type', 'mcq')
+            question_types = [single_type] if not isinstance(single_type, list) else single_type
+
         difficulty = request.data.get('difficulty', 'medium')
         count = int(request.data.get('count', 3))
-        prompt = request.data.get('prompt', '')
+        custom_prompt = request.data.get('prompt', '')
+        provider = request.data.get('provider', getattr(django_settings, 'AI_QUESTION_PROVIDER', 'auto'))
 
         subject = assessment.subject
-        sub_name = subject.name.lower()
-        
-        for i in range(count):
-            if 'math' in sub_name:
-                q_text = f"Solve the algebraic equation: {3 + i}x - {2 + i} = {10 + i * 5}."
-                options = [
-                    {'text': f"x = {4 + i}", 'is_correct': True, 'order': 1},
-                    {'text': f"x = {2 + i}", 'is_correct': False, 'order': 2},
-                    {'text': f"x = {6 + i}", 'is_correct': False, 'order': 3},
-                ]
-            elif 'bio' in sub_name:
-                q_text = f"Describe the main role of the mitochondria in a cell." if i == 0 else "What cell organelle contains chlorophyll?"
-                options = [
-                    {'text': "Energy production" if i == 0 else "Chloroplast", 'is_correct': True, 'order': 1},
-                    {'text': "Protein synthesis" if i == 0 else "Nucleus", 'is_correct': False, 'order': 2},
-                ]
-            else:
-                q_text = f"Explain the core concept of topic related to '{subject.name}' (AI generated question #{i+1})."
-                options = [
-                    {'text': "Correct response option", 'is_correct': True, 'order': 1},
-                    {'text': "Incorrect distractor option", 'is_correct': False, 'order': 2},
-                ]
+        topic_name = ''
+        # If a topic id was provided, resolve its name
+        topic_id = request.data.get('topic')
+        if topic_id:
+            from apps.content.models import Topic
+            try:
+                topic_name = Topic.objects.get(id=topic_id).name
+            except Topic.DoesNotExist:
+                pass
 
-            if question_type == 'essay':
-                options = []
-            elif question_type == 'short_answer':
-                options = [{'text': "correct response", 'is_correct': True, 'order': 1}]
+        # ── Generate questions via AI service ───────────────────────
+        generator = AIQuestionGenerator(provider=provider)
+        generated = generator.generate(
+            subject_name=subject.name,
+            topic_name=topic_name,
+            question_types=question_types,
+            difficulty=difficulty,
+            count=count,
+            custom_prompt=custom_prompt,
+        )
 
-            q_data = {
-                'text': q_text,
-                'question_type': question_type,
-                'difficulty': difficulty,
-                'points': 5.0,
-                'subject': subject.id,
-                'options': options
-            }
+        # ── Save each generated question and link to assessment ─────
+        created_count = 0
+        for q_data in generated:
+            q_data['subject'] = subject.id
             serializer = QuestionCreateSerializer(data=q_data, context={'request': request})
-            serializer.is_valid(raise_exception=True)
-            question_instance = serializer.save()
-            
-            AssessmentQuestion.objects.get_or_create(
-                assessment=assessment,
-                question=question_instance,
-                defaults={'order': assessment.assessment_questions.count() + 1}
+            if serializer.is_valid():
+                question_instance = serializer.save()
+                AssessmentQuestion.objects.get_or_create(
+                    assessment=assessment,
+                    question=question_instance,
+                    defaults={'order': assessment.assessment_questions.count() + 1},
+                )
+                created_count += 1
+            else:
+                import logging
+                logging.getLogger(__name__).warning(
+                    'Skipped invalid AI question: %s', serializer.errors,
+                )
+
+        provider_label = PROVIDER_LABELS.get(generator.used_provider, generator.used_provider)
+        return Response(
+            {
+                'message': f'Successfully generated and linked {created_count} questions via {provider_label} AI.',
+                'provider': generator.used_provider,
+                'count': created_count,
+            },
+            status=status.HTTP_201_CREATED,
+        )
+
+    @action(detail=True, methods=['post'], url_path='convert-pdf-to-questions')
+    def convert_pdf_to_questions(self, request, pk=None):
+        """Extract questions from uploaded PDF/Word sheet using AI and convert to interactive assessment."""
+        assessment = self.get_object()
+        if not assessment.is_file_based or not assessment.file_attachment:
+            return Response(
+                {'error': 'This assessment is not file-based or does not have an uploaded file attachment.'},
+                status=status.HTTP_400_BAD_REQUEST
             )
-            
-        return Response({'message': f'Successfully generated and linked {count} questions via AI.'}, status=status.HTTP_201_CREATED)
+
+        import io
+        import logging
+        import requests
+        from pypdf import PdfReader
+        from django.conf import settings as django_settings
+        from apps.content.ai_generators import AIQuestionGenerator, PROVIDER_LABELS
+        from apps.content.serializers import QuestionCreateSerializer
+        from .models import AssessmentQuestion
+
+        logger = logging.getLogger(__name__)
+
+        # 1. Extract text from the PDF file
+        try:
+            try:
+                # Local storage path
+                file_path = assessment.file_attachment.path
+                reader = PdfReader(file_path)
+            except NotImplementedError:
+                # Remote storage path (e.g. Cloudinary/S3)
+                file_url = assessment.file_attachment.url
+                response = requests.get(file_url, timeout=30)
+                response.raise_for_status()
+                pdf_file = io.BytesIO(response.content)
+                reader = PdfReader(pdf_file)
+
+            pdf_text = ""
+            for page in reader.pages:
+                text = page.extract_text()
+                if text:
+                    pdf_text += text + "\n"
+
+            pdf_text = pdf_text.strip()
+            if not pdf_text:
+                return Response(
+                    {'error': 'Could not extract any text from the PDF file. It might be scanned/image-only.'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+        except Exception as e:
+            logger.exception("Failed to parse PDF file: %s", e)
+            return Response(
+                {'error': f'Failed to process the PDF file: {str(e)}'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # 2. Call the AI service to convert extracted text into structured questions
+        provider = request.data.get('provider', getattr(django_settings, 'AI_QUESTION_PROVIDER', 'auto'))
+        generator = AIQuestionGenerator(provider=provider)
+        
+        try:
+            generated = generator.convert_pdf_text(
+                pdf_text=pdf_text,
+                subject_name=assessment.subject.name,
+            )
+        except Exception as e:
+            logger.exception("AI conversion failed: %s", e)
+            return Response(
+                {'error': f'AI conversion failed: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+        # 3. Save questions and link them to the assessment
+        created_count = 0
+        for q_data in generated:
+            q_data['subject'] = assessment.subject.id
+            serializer = QuestionCreateSerializer(data=q_data, context={'request': request})
+            if serializer.is_valid():
+                question_instance = serializer.save()
+                AssessmentQuestion.objects.get_or_create(
+                    assessment=assessment,
+                    question=question_instance,
+                    defaults={'order': assessment.assessment_questions.count() + 1},
+                )
+                created_count += 1
+            else:
+                logger.warning('Skipped invalid parsed question: %s', serializer.errors)
+
+        if created_count == 0:
+            return Response(
+                {'error': 'Failed to extract any valid questions from the document.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # 4. Turn off is_file_based so the platform displays structured questions to the student
+        assessment.is_file_based = False
+        assessment.save()
+
+        provider_label = PROVIDER_LABELS.get(generator.used_provider, generator.used_provider)
+        return Response(
+            {
+                'message': f'Successfully parsed document and created {created_count} interactive questions via {provider_label} AI.',
+                'provider': generator.used_provider,
+                'count': created_count,
+            },
+            status=status.HTTP_200_OK
+        )
 
     @action(detail=True, methods=['post'])
     def start(self, request, pk=None):
@@ -197,7 +312,8 @@ class AssessmentViewSet(viewsets.ModelViewSet):
     def questions(self, request, pk=None):
         """Get ordered questions for this assessment (applying questions_limit if set)."""
         assessment = self.get_object()
-        questions = [aq.question for aq in assessment.assessment_questions.all().order_by('order')]
+        aqs = assessment.assessment_questions.select_related('question').prefetch_related('question__options').order_by('order')
+        questions = [aq.question for aq in aqs]
         
         limit = assessment.questions_limit
         if limit and len(questions) > limit:
@@ -221,7 +337,9 @@ class AssessmentViewSet(viewsets.ModelViewSet):
 
 
 class AttemptViewSet(viewsets.ReadOnlyModelViewSet):
-    queryset = AssessmentAttempt.objects.select_related('assessment', 'student').prefetch_related('responses')
+    queryset = AssessmentAttempt.objects.select_related('assessment', 'student').prefetch_related(
+        'responses__question__options', 'responses__selected_options'
+    )
     serializer_class = AttemptSerializer
     filterset_fields = ['assessment']
 

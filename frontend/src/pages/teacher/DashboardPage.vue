@@ -43,6 +43,27 @@ const groupedAssessments = computed(() => {
   return groups
 })
 
+const previewingAssessment = ref<any | null>(null)
+const previewingQuestions = ref<any[]>([])
+const showPreviewModal = ref(false)
+const loadingPreview = ref(false)
+
+async function previewAssessmentQuestions(ass: any) {
+  previewingAssessment.value = ass
+  showPreviewModal.value = true
+  loadingPreview.value = true
+  previewingQuestions.value = []
+  
+  try {
+    const res = await api.get(`/assessments/${ass.id}/questions/`)
+    previewingQuestions.value = Array.isArray(res.data) ? res.data : res.data?.results || []
+  } catch (err) {
+    console.error('Failed to load preview questions:', err)
+  } finally {
+    loadingPreview.value = false
+  }
+}
+
 function deleteAssessment(id: string) {
   if (!confirm('Are you sure you want to delete this assessment? This will remove all attempts and student responses associated with it.')) return
   api.delete(`/assessments/${id}/`)
@@ -279,7 +300,10 @@ onMounted(async () => {
                           {{ ass.status }}
                         </span>
                       </td>
-                      <td class="px-6 py-4">
+                      <td class="px-6 py-4 space-x-3">
+                        <button @click="previewAssessmentQuestions(ass)" class="text-xs font-bold text-indigo-600 hover:underline">
+                          Review Questions
+                        </button>
                         <button @click="deleteAssessment(ass.id)" class="text-xs font-bold text-red-650 hover:underline">
                           Delete
                         </button>
@@ -345,5 +369,62 @@ onMounted(async () => {
         </div>
       </div>
     </template>
+
+    <!-- Review Assessment Questions Modal -->
+    <Teleport to="body">
+      <div v-if="showPreviewModal" class="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4" @click.self="showPreviewModal = false">
+        <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-3xl max-w-2xl w-full max-h-[85vh] overflow-y-auto p-6 shadow-2xl space-y-6 flex flex-col justify-between">
+          <div class="space-y-4">
+            <div class="flex justify-between items-center border-b border-gray-150 dark:border-gray-800 pb-4">
+              <div>
+                <h3 class="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                  <span>🔍</span> Review Assessment Questions
+                </h3>
+                <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">Reviewing: <span class="font-semibold text-indigo-650">{{ previewingAssessment?.title }}</span></p>
+              </div>
+              <button @click="showPreviewModal = false" class="text-gray-450 hover:text-gray-600 dark:text-gray-400 dark:hover:text-gray-200 text-lg">✕</button>
+            </div>
+
+            <div v-if="loadingPreview" class="flex flex-col items-center justify-center py-12 space-y-3">
+              <div class="animate-spin rounded-full h-8 w-8 border-2 border-indigo-600 border-t-transparent"></div>
+              <p class="text-xs text-gray-500">Loading questions...</p>
+            </div>
+
+            <div v-else-if="previewingQuestions.length === 0" class="text-center py-12 text-gray-500 space-y-1">
+              <p class="text-xl">⚠️</p>
+              <p class="text-sm font-semibold">No questions found</p>
+              <p class="text-xs text-gray-450">This assessment currently has no questions generated or linked.</p>
+            </div>
+
+            <div v-else class="space-y-4 overflow-y-auto max-h-[50vh] pr-2">
+              <div v-for="(q, idx) in previewingQuestions" :key="q.id" class="p-4 bg-gray-50 dark:bg-gray-850 border border-gray-100 dark:border-gray-800 rounded-2xl space-y-3">
+                <div class="flex justify-between items-center">
+                  <span class="px-2 py-0.5 bg-indigo-50 dark:bg-indigo-950/40 text-indigo-650 dark:text-indigo-400 text-[10px] font-bold rounded-md uppercase">
+                    Q{{ idx + 1 }} · {{ q.question_type.replace('_', ' ') }}
+                  </span>
+                  <span class="text-[10px] text-gray-500 font-mono">{{ q.difficulty }}</span>
+                </div>
+                
+                <p class="text-sm font-semibold text-gray-900 dark:text-white">{{ q.text }}</p>
+
+                <!-- Options list for MCQs / True-False -->
+                <div v-if="q.options && q.options.length > 0" class="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-2">
+                  <div v-for="opt in q.options" :key="opt.id" :class="['p-2 rounded-xl text-xs flex items-center gap-2 border', opt.is_correct ? 'bg-emerald-50/50 border-emerald-200 text-emerald-700 dark:bg-emerald-950/20 dark:border-emerald-900/50 dark:text-emerald-400 font-bold' : 'border-gray-100 dark:border-gray-800 text-gray-600 dark:text-gray-400']">
+                    <span>{{ opt.is_correct ? '✅' : '⚪' }}</span>
+                    <span>{{ opt.text }}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="border-t border-gray-150 dark:border-gray-800 pt-4 flex justify-end">
+            <button @click="showPreviewModal = false" class="px-6 py-2 bg-indigo-600 text-white text-xs font-bold rounded-xl hover:bg-indigo-700 transition-colors">
+              Close Preview
+            </button>
+          </div>
+        </div>
+      </div>
+    </Teleport>
   </div>
 </template>

@@ -302,3 +302,9 @@ LOGGING = {
         },
     },
 }
+
+# AI Question Generation API Keys
+OPENAI_API_KEY = os.environ.get('OPENAI_API_KEY', '')
+GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY', '')
+ANTHROPIC_API_KEY = os.environ.get('ANTHROPIC_API_KEY', '')
+AI_QUESTION_PROVIDER = os.environ.get('AI_QUESTION_PROVIDER', 'auto')  # auto, openai, gemini, claude

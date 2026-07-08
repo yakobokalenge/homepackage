@@ -31,8 +31,19 @@ urlpatterns = [
 ]
 
 if settings.DEBUG:
-    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
-    urlpatterns += static(settings.STATIC_URL, document_root=settings.STATIC_ROOT)
+    from django.views.decorators.clickjacking import xframe_options_exempt
+    from django.views.static import serve
+    from django.urls import re_path
+    import re
+
+    @xframe_options_exempt
+    def serve_media_xframe_exempt(request, path, document_root=None, show_indexes=False):
+        return serve(request, path, document_root=document_root, show_indexes=show_indexes)
+
+    urlpatterns += [
+        re_path(r'^%s(?P<path>.*)$' % re.escape(settings.MEDIA_URL.lstrip('/')), serve_media_xframe_exempt, {'document_root': settings.MEDIA_ROOT}),
+        re_path(r'^%s(?P<path>.*)$' % re.escape(settings.STATIC_URL.lstrip('/')), serve_media_xframe_exempt, {'document_root': settings.STATIC_ROOT}),
+    ]
     try:
         import debug_toolbar
         urlpatterns += [path('__debug__/', include(debug_toolbar.urls))]

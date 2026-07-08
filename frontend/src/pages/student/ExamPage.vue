@@ -32,6 +32,8 @@ let timer: ReturnType<typeof setInterval>
 // File Based States
 const studentFile = ref<File | null>(null)
 const fileBasedAnswers = ref('')
+const pdfLoaded = ref(false)
+const pdfError = ref(false)
 
 const fileAttachmentUrl = computed(() => {
   if (!assessment.value?.file_attachment) return ''
@@ -69,6 +71,9 @@ onMounted(async () => {
           { id: '2', type: 'true_false', text: 'DNA replication occurs during the S phase of the cell cycle.', options: [{ id: 'a', text: 'True' }, { id: 'b', text: 'False' }] }
         ]
       }
+    } else {
+      // For file-based: auto-dismiss loading overlay after 3s (embed tags don't fire load events reliably)
+      setTimeout(() => { pdfLoaded.value = true }, 3000)
     }
 
     // 4. Start timer
@@ -225,22 +230,58 @@ async function handleSubmit() {
         <div class="bg-white dark:bg-gray-900 border border-gray-250 dark:border-gray-800 rounded-2xl p-6 flex flex-col h-[650px] shadow-sm">
           <div class="flex justify-between items-center mb-3">
             <h3 class="text-sm font-bold text-gray-900 dark:text-white flex items-center gap-2">
-              📄 Exam Question Sheet Viewer
+              📄 Exam Question Sheet
             </h3>
             <a v-if="assessment.file_attachment" :href="fileAttachmentUrl" target="_blank" download class="text-xs text-blue-600 hover:underline font-semibold">
-              📥 Download File
+              📥 Download
             </a>
           </div>
-          <iframe v-if="assessment.file_attachment" :src="fileAttachmentUrl" class="flex-1 w-full border border-gray-200 dark:border-gray-800 rounded-xl bg-white"></iframe>
+
+          <template v-if="assessment.file_attachment">
+            <!-- PDF Viewer: use embed for best cross-origin compatibility -->
+            <div class="flex-1 w-full relative rounded-xl overflow-hidden border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-950">
+              <!-- Loading overlay -->
+              <div v-if="!pdfLoaded && !pdfError" class="absolute inset-0 flex flex-col items-center justify-center z-10 bg-white dark:bg-gray-950">
+                <span class="animate-spin inline-block w-8 h-8 border-3 border-blue-500 border-t-transparent rounded-full mb-3"></span>
+                <p class="text-xs text-gray-500 font-medium">Loading document...</p>
+              </div>
+
+              <!-- Primary: embed tag (best for PDF in most browsers) -->
+              <embed 
+                v-if="!pdfError"
+                :src="fileAttachmentUrl + '#toolbar=1&navpanes=1&scrollbar=1'" 
+                type="application/pdf"
+                class="w-full h-full"
+                @load="pdfLoaded = true"
+              />
+
+              <!-- Fallback: error state with direct actions -->
+              <div v-if="pdfError" class="absolute inset-0 flex flex-col items-center justify-center space-y-4 p-6 text-center">
+                <span class="text-4xl">📄</span>
+                <p class="text-sm font-semibold text-gray-700 dark:text-gray-300">Document viewer unavailable</p>
+                <p class="text-xs text-gray-500">Your browser may not support inline PDF rendering. Use the options below to view the exam sheet.</p>
+                <div class="flex gap-2">
+                  <a :href="fileAttachmentUrl" target="_blank" class="px-4 py-2 bg-indigo-600 text-white rounded-xl text-xs font-bold hover:bg-indigo-700 transition-colors">
+                    ↗️ Open in New Tab
+                  </a>
+                  <a :href="fileAttachmentUrl" download class="px-4 py-2 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 rounded-xl text-xs font-bold hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors">
+                    📥 Download PDF
+                  </a>
+                </div>
+              </div>
+            </div>
+
+            <!-- Quick action bar -->
+            <div class="mt-3 flex gap-2">
+              <a :href="fileAttachmentUrl" target="_blank" class="flex-1 py-2 bg-indigo-50 dark:bg-indigo-950/30 text-indigo-600 dark:text-indigo-400 rounded-xl text-xs font-bold text-center hover:bg-indigo-100 dark:hover:bg-indigo-950/50 transition-colors">
+                ↗️ Open in New Tab
+              </a>
+              <button @click="pdfError = !pdfError" class="px-3 py-2 bg-gray-100 dark:bg-gray-800 text-gray-500 rounded-xl text-xs font-medium hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors">
+                🔄 Toggle View
+              </button>
+            </div>
+          </template>
           <p v-else class="text-sm text-amber-600 text-center my-auto">No exam sheet attachment was uploaded for this exam. Please contact your teacher.</p>
-          
-          <!-- Fallback direct link in case iframe loading is blocked -->
-          <div v-if="assessment.file_attachment" class="mt-3 p-3 bg-blue-50 dark:bg-blue-950/20 border border-blue-100 dark:border-blue-900/40 rounded-xl flex justify-between items-center text-xs">
-            <span class="text-gray-600 dark:text-gray-400">PDF question sheet not rendering?</span>
-            <a :href="fileAttachmentUrl" target="_blank" class="px-3 py-1.5 bg-indigo-600 text-white rounded-lg font-bold hover:bg-indigo-700 transition-colors">
-              ↗️ Open Exam in New Tab
-            </a>
-          </div>
         </div>
 
         <!-- Right panel: Interactive Answer Entry & File upload -->
@@ -282,7 +323,7 @@ async function handleSubmit() {
       </div>
 
       <!-- INTERACTIVE EXAM LAYOUT -->
-      <div v-else class="space-y-6">
+      <div v-else-if="questions.length > 0" class="space-y-6">
         <!-- Question Navigator -->
         <div class="flex flex-wrap gap-2">
           <button v-for="(q, i) in questions" :key="q.id" @click="currentIndex = i"
@@ -294,7 +335,7 @@ async function handleSubmit() {
         <!-- Question Content -->
         <div class="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-8">
           <div class="flex items-center gap-2 mb-4">
-            <span class="px-3 py-1 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 text-xs font-medium rounded-full capitalize">{{ currentQ.type.replace('_', ' ') }}</span>
+            <span class="px-3 py-1 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 text-xs font-medium rounded-full capitalize">{{ currentQ.question_type.replace('_', ' ') }}</span>
           </div>
           <h3 class="text-xl font-semibold text-gray-900 dark:text-white mb-6 leading-relaxed">{{ currentQ.text }}</h3>
 
@@ -308,7 +349,7 @@ async function handleSubmit() {
 
           <!-- Fill Blank / Essay -->
           <div v-else>
-            <textarea v-if="currentQ.type === 'essay'" v-model="answers[currentQ.id]" @blur="handleTextAnswerSave(currentQ.id, 'essay')" rows="8"
+            <textarea v-if="currentQ.question_type === 'essay'" v-model="answers[currentQ.id]" @blur="handleTextAnswerSave(currentQ.id, 'essay')" rows="8"
               class="w-full p-4 rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:outline-none resize-none"
               placeholder="Write your answer here..."></textarea>
             <input v-else v-model="answers[currentQ.id]" @blur="handleTextAnswerSave(currentQ.id, 'fill_blank')"
@@ -332,6 +373,13 @@ async function handleSubmit() {
             {{ t('exam.submit') }}
           </button>
         </div>
+      </div>
+
+      <!-- Fallback when no questions are present -->
+      <div v-else class="text-center py-12 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl shadow-sm">
+        <span class="text-3xl block mb-2">⚠️</span>
+        <p class="text-gray-500 dark:text-gray-400 font-bold">No questions found</p>
+        <p class="text-xs text-gray-450 mt-1">This interactive assessment does not contain any questions. Please contact your teacher.</p>
       </div>
 
       <!-- Confirm Modal -->
