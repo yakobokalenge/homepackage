@@ -396,7 +396,7 @@ async function handleSubmit() {
             <div class="flex items-center gap-2 mb-4">
               <span class="px-3 py-1 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 text-xs font-medium rounded-full capitalize">{{ currentQ.question_type.replace('_', ' ') }}</span>
             </div>
-            <h3 class="text-xl font-semibold text-gray-900 dark:text-white mb-6 leading-relaxed">{{ currentQ.text }}</h3>
+            <div v-html="currentQ.text" class="text-xl font-semibold text-gray-900 dark:text-white mb-6 leading-relaxed whitespace-pre-wrap"></div>
 
             <!-- MCQ / True-False Options -->
             <div v-if="currentQ.options && currentQ.options.length > 0" class="space-y-3">
