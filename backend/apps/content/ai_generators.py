@@ -139,8 +139,91 @@ class AIQuestionGenerator:
         except Exception:
             logger.exception('AI PDF conversion failed for provider=%s', self.provider)
 
-        # Fallback if AI fails or is not configured
+        # Fallback if AI fails or is not configured: parse text heuristically using regex patterns
+        logger.info('Falling back to heuristic document text parser.')
+        self.used_provider = 'fallback'
+        parsed = self._parse_heuristically(pdf_text)
+        if parsed:
+            return parsed
+
         return self._generate_fallback(subject_name, topic_name or '', ['mcq'], 'medium', 5)
+
+    def _parse_heuristically(self, text):
+        """Fallback heuristic parser to extract questions from raw text when AI is unavailable."""
+        import re
+        questions = []
+        
+        # Split text into lines and clean
+        lines = [line.strip() for line in text.split('\n') if line.strip()]
+        
+        current_question = None
+        
+        # Matches patterns like: "1. ", "2) ", "Q3: ", "Question 4: "
+        q_pattern = re.compile(r'^(?:(?:[qQ]uestion|[qQ])\s*)?(\d+)[.\s)]\s*(.*)$')
+        # Matches options like: "A. Option", "B) Option", "(C) Option", "a. Option"
+        opt_pattern = re.compile(r'^[(\s]*([A-Da-d])[.\s)]\s*(.*)$')
+        
+        for line in lines:
+            q_match = q_pattern.match(line)
+            if q_match:
+                if current_question:
+                    questions.append(current_question)
+                
+                q_num = q_match.group(1)
+                q_text = q_match.group(2).strip()
+                
+                current_question = {
+                    'text': q_text,
+                    'question_type': 'essay',  # default type
+                    'difficulty': 'medium',
+                    'explanation': f'Extracted from question {q_num}.',
+                    'points': 5.0,
+                    'options': []
+                }
+                continue
+                
+            if current_question:
+                opt_match = opt_pattern.match(line)
+                if opt_match:
+                    opt_letter = opt_match.group(1).upper()
+                    opt_text = opt_match.group(2).strip()
+                    
+                    # If we find options, it's an MCQ
+                    current_question['question_type'] = 'mcq'
+                    
+                    # Simple heuristic: first option is correct
+                    is_correct = len(current_question['options']) == 0
+                    
+                    current_question['options'].append({
+                        'text': opt_text,
+                        'is_correct': is_correct,
+                        'order': len(current_question['options']) + 1
+                    })
+                else:
+                    # Append extra text line to current question description
+                    if not current_question['options']:
+                        current_question['text'] += " " + line
+                        
+        if current_question:
+            questions.append(current_question)
+            
+        # Post-process questions to detect type (fill blank, true/false)
+        for q in questions:
+            q_text = q['text'].lower()
+            if not q['options']:
+                if '___' in q_text or 'fill' in q_text:
+                    q['question_type'] = 'fill_blank'
+                    q['options'] = [{'text': 'Answer', 'is_correct': True, 'order': 1}]
+                elif 'true' in q_text and 'false' in q_text:
+                    q['question_type'] = 'true_false'
+                    q['options'] = [
+                        {'text': 'True', 'is_correct': True, 'order': 1},
+                        {'text': 'False', 'is_correct': False, 'order': 2}
+                    ]
+                else:
+                    q['question_type'] = 'essay'
+                    
+        return questions
 
     # ------------------------------------------------------------------
     # Prompt builder
