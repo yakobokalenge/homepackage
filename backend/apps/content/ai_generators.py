@@ -99,18 +99,20 @@ class AIQuestionGenerator:
             "the provided raw text of an assessment worksheet/PDF, and convert them into structured JSON. "
             "You must ensure the converted questions look EXACTLY the same as they did in the PDF format.\n\n"
             "CRITICAL RULES:\n"
-            "1. PRESERVE ORIGINAL FORMATTING: Do not simplify or split complex questions. If a question has sub-parts "
+            "1. IGNORE NON-QUESTION CONTENT: Do not extract document headers, title blocks, candidate metadata lines (e.g. name, date, index number), "
+            "instructions to candidates, marks distributions tables, page numbers, or footers. Exclude these completely from your JSON output.\n"
+            "2. PRESERVE ORIGINAL FORMATTING: Do not simplify or split complex questions. If a question has sub-parts "
             "(e.g., (a), (b), (i), (ii)), has multi-line layouts, custom tables, or specialized formatting, keep them "
             "exactly as they appear in the PDF. Put the entire layout inside the 'text' field.\n"
-            "2. RENDER LAYOUT: In the 'text' field, preserve the original spacing, indentation, and newlines exactly. "
+            "3. RENDER LAYOUT: In the 'text' field, preserve the original spacing, indentation, and newlines exactly. "
             "You can use raw newlines or simple HTML tags (such as <br>, <strong>, <u>, <ol>, <ul>, <li>, <table>) "
             "to make it match the original PDF layout perfectly.\n"
-            "3. QUESTION TYPES: If a question is multiple-choice with options A, B, C, D, classify it as 'mcq' and populate the options list. "
+            "4. QUESTION TYPES: If a question is multiple-choice with options A, B, C, D, classify it as 'mcq' and populate the options list. "
             "If it is a free-form question, has sub-questions, or does not fit a simple question type, classify it as 'essay' so that the "
             "student has a clean written answer box to respond to the entire question layout.\n"
-            "4. Return ONLY a valid JSON array – no markdown code block backticks (like ```json), no commentary.\n"
-            "5. Each element must have keys: text, question_type, difficulty, explanation, points, options.\n"
-            "6. Set points to 5.0 for all questions.\n"
+            "5. Return ONLY a valid JSON array – no markdown code block backticks (like ```json), no commentary.\n"
+            "6. Each element must have keys: text, question_type, difficulty, explanation, points, options.\n"
+            "7. Set points to 5.0 for all questions.\n"
         )
         
         user_prompt = (
@@ -118,8 +120,9 @@ class AIQuestionGenerator:
             "--- START OF TEXT ---\n"
             f"{pdf_text}\n"
             "--- END OF TEXT ---\n\n"
-            "Extract all questions from the text above. Match the original spacing, formatting, options, and subparts "
-            "exactly as they appear. Return them as a JSON array matching this schema:\n"
+            "Extract ONLY the actual questions from the text above. Ignore all non-question elements such as exam header details, "
+            "instructions to candidates, and index number/name blocks. Match the original spacing and subparts "
+            "exactly for the question text. Return them as a JSON array matching this schema:\n"
             "[\n"
             "  {\n"
             "    \"text\": \"Question text block matching PDF layout\",\n"
@@ -169,11 +172,64 @@ class AIQuestionGenerator:
         # Matches options like: "A. Option", "B) Option", "(C) Option", "a. Option"
         opt_pattern = re.compile(r'^[(\s]*([A-Da-d])[.\s)]\s*(.*)$')
         
+        # Heuristic noise matching (boilerplate and candidate metadata)
+        noise_patterns = [
+            re.compile(r'^page\s*\d+', re.I),
+            re.compile(r'^\d+\s*of\s*\d+$', re.I),
+            re.compile(r'^turn\s*over', re.I),
+            re.compile(r'^p\.t\.o', re.I),
+            re.compile(r'^name\s*:', re.I),
+            re.compile(r'^index\s*(?:number)?\s*:', re.I),
+            re.compile(r'^date\s*:', re.I),
+            re.compile(r'^class\s*:', re.I),
+            re.compile(r'^signature\s*:', re.I),
+            re.compile(r'^time\s*:', re.I),
+            re.compile(r'^marks\s*:', re.I),
+            re.compile(r'^subject\s*:', re.I),
+            re.compile(r'^instructions\s*:', re.I),
+            re.compile(r'^candidate\s*:', re.I),
+            re.compile(r'^school\s*:', re.I),
+            re.compile(r'^mid[- ]term', re.I),
+            re.compile(r'^terminal\s+exam', re.I),
+            re.compile(r'^annual\s+exam', re.I),
+            re.compile(r'^test\s+paper', re.I),
+            re.compile(r'^maximum\s+marks', re.I),
+            re.compile(r'^time\s+allowed', re.I),
+            re.compile(r'^hours?\s*$', re.I),
+            re.compile(r'^footer', re.I),
+            re.compile(r'^end\s*of', re.I)
+        ]
+        
+        def is_boilerplate(q_text):
+            text_lower = q_text.lower()
+            phrases = [
+                'answer all questions', 'write your index', 'write your name', 
+                'do not open', 'calculators are not', 'mobile phones', 
+                'allowed in the exam', 'allowed in this exam', 'paper consists of', 
+                'consists of ______ pages', 'this paper has', 'read all instructions',
+                'invigilator', 'supervisor', 'signature of', 'instructions to candidates',
+                'verify that this paper', 'candidates must', 'answer any'
+            ]
+            for phrase in phrases:
+                if phrase in text_lower:
+                    return True
+            return False
+
         for line in lines:
+            # Check if line is purely exam header noise / metadata
+            is_noise = False
+            for pat in noise_patterns:
+                if pat.search(line):
+                    is_noise = True
+                    break
+            if is_noise:
+                continue
+                
             q_match = q_pattern.match(line)
             if q_match:
                 if current_question:
-                    questions.append(current_question)
+                    if not is_boilerplate(current_question['text']):
+                        questions.append(current_question)
                 
                 q_num = q_match.group(1)
                 q_text = q_match.group(2).strip()
@@ -206,15 +262,17 @@ class AIQuestionGenerator:
                         'order': len(current_question['options']) + 1
                     })
                 else:
-                    # Append extra text line to current question description
+                    # Append extra text line to current question description if options haven't started
                     if not current_question['options']:
-                        current_question['text'] += " " + line
+                        current_question['text'] += "\n" + line
                         
         if current_question:
-            questions.append(current_question)
+            if not is_boilerplate(current_question['text']):
+                questions.append(current_question)
             
         # Post-process questions to detect type (fill blank, true/false)
-        for q in questions:
+        final_questions = []
+        for idx, q in enumerate(questions):
             q_text = q['text'].lower()
             if not q['options']:
                 if '___' in q_text or 'fill' in q_text:
@@ -228,8 +286,9 @@ class AIQuestionGenerator:
                     ]
                 else:
                     q['question_type'] = 'essay'
+            final_questions.append(q)
                     
-        return questions
+        return final_questions
 
     # ------------------------------------------------------------------
     # Prompt builder
