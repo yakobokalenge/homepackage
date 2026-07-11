@@ -113,6 +113,7 @@ class AIQuestionGenerator:
             "5. Return ONLY a valid JSON array – no markdown code block backticks (like ```json), no commentary.\n"
             "6. Each element must have keys: text, question_type, difficulty, explanation, points, options.\n"
             "7. Set points to 5.0 for all questions.\n"
+            "8. ILLUSTRATIONS & DIAGRAMS: The text may contain image references like '[IMAGE: /media/extracted_images/xyz.png]' or page-level graphics like '[Page N Illustrations: Image A: /media/extracted_images/abc.png]'. If a question refers to or requires an image, graph, diagram, or illustration, you MUST insert a standard HTML image tag: <img src=\"/media/extracted_images/xyz.png\" class=\"my-4 max-w-full rounded-xl shadow-sm block\" /> inside the 'text' field of the question at the exact position it belongs.\n"
         )
         
         user_prompt = (
@@ -162,15 +163,31 @@ class AIQuestionGenerator:
         import re
         questions = []
         
+        # 1. Pre-parse PDF page illustrations mappings
+        # Map of {(page_num, label): url}
+        illustrations = {}
+        ill_pattern = re.compile(r'\[Page\s*(\d+)\s*Illustrations:\s*([^\]]+)\]', re.I)
+        for match in ill_pattern.finditer(text):
+            page_num = int(match.group(1))
+            ill_str = match.group(2)
+            parts = [p.strip() for p in ill_str.split(',') if ':' in p]
+            for part in parts:
+                key_val = part.split(':', 1)
+                img_label = key_val[0].strip().replace('Image ', '').replace('image ', '').strip().upper()
+                img_url = key_val[1].strip()
+                illustrations[(page_num, img_label)] = img_url
+
         # Split text into lines and clean
         lines = [line.strip() for line in text.split('\n') if line.strip()]
         
         current_question = None
+        current_page_num = 1
         
         # Matches patterns like: "1. ", "2) ", "Q3: ", "Question 4: "
         q_pattern = re.compile(r'^(?:(?:[qQ]uestion|[qQ])\s*)?(\d+)[.\s)]\s*(.*)$')
         # Matches options like: "A. Option", "B) Option", "(C) Option", "a. Option"
         opt_pattern = re.compile(r'^[(\s]*([A-Da-d])[.\s)]\s*(.*)$')
+        page_indicator_pattern = re.compile(r'^\[Page\s*(\d+)\s*Illustrations:', re.I)
         
         # Heuristic noise matching (boilerplate and candidate metadata)
         noise_patterns = [
@@ -201,21 +218,19 @@ class AIQuestionGenerator:
         ]
         
         def is_boilerplate(q_text):
-            text_lower = q_text.lower()
-            phrases = [
-                'answer all questions', 'write your index', 'write your name', 
-                'do not open', 'calculators are not', 'mobile phones', 
-                'allowed in the exam', 'allowed in this exam', 'paper consists of', 
-                'consists of ______ pages', 'this paper has', 'read all instructions',
-                'invigilator', 'supervisor', 'signature of', 'instructions to candidates',
-                'verify that this paper', 'candidates must', 'answer any'
-            ]
-            for phrase in phrases:
-                if phrase in text_lower:
-                    return True
-            return False
+            return self._is_invalid_question(q_text)
 
         for line in lines:
+            # Track current page number
+            page_match = page_indicator_pattern.match(line)
+            if page_match:
+                current_page_num = int(page_match.group(1))
+                continue
+
+            # Clean inline images in the line
+            if '[IMAGE:' in line:
+                line = re.sub(r'\[IMAGE:\s*([^\s\]]+)\]', r'<img src="\1" class="my-4 max-w-full rounded-xl shadow-sm block" />', line)
+
             # Check if line is purely exam header noise / metadata
             is_noise = False
             for pat in noise_patterns:
@@ -240,7 +255,8 @@ class AIQuestionGenerator:
                     'difficulty': 'medium',
                     'explanation': f'Extracted from question {q_num}.',
                     'points': 5.0,
-                    'options': []
+                    'options': [],
+                    'page_num': current_page_num
                 }
                 continue
                 
@@ -270,10 +286,39 @@ class AIQuestionGenerator:
             if not is_boilerplate(current_question['text']):
                 questions.append(current_question)
             
-        # Post-process questions to detect type (fill blank, true/false)
+        # Post-process questions to detect type and map PDF illustrations
         final_questions = []
         for idx, q in enumerate(questions):
             q_text = q['text'].lower()
+            q_page = q.get('page_num', 1)
+            
+            # Map illustration if mentioned
+            page_ills = {lbl: url for (pg, lbl), url in illustrations.items() if pg == q_page}
+            for lbl, url in page_ills.items():
+                lbl_lower = lbl.lower()
+                patterns = [
+                    r'\bdiagram\s*' + lbl_lower + r'\b',
+                    r'\bimage\s*' + lbl_lower + r'\b',
+                    r'\bfigure\s*' + lbl_lower + r'\b',
+                    r'\bgraph\s*' + lbl_lower + r'\b',
+                    r'\bshape\s*' + lbl_lower + r'\b',
+                    r'\b' + lbl_lower + r'\b'
+                ]
+                has_mention = False
+                for pat in patterns:
+                    if re.search(pat, q_text):
+                        has_mention = True
+                        break
+                
+                if not has_mention and len(page_ills) == 1:
+                    if any(w in q_text for w in ('diagram', 'figure', 'illustration', 'graph', 'shape', 'triangle', 'rectangle', 'circle', 'angle')):
+                        has_mention = True
+                        
+                if has_mention:
+                    img_tag = f'<img src="{url}" class="my-4 max-w-full rounded-xl shadow-sm block" />'
+                    if img_tag not in q['text']:
+                        q['text'] += "\n" + img_tag
+
             if not q['options']:
                 if '___' in q_text or 'fill' in q_text:
                     q['question_type'] = 'fill_blank'
@@ -286,6 +331,18 @@ class AIQuestionGenerator:
                     ]
                 else:
                     q['question_type'] = 'essay'
+            
+            # Clean up temporary page_num key
+            if 'page_num' in q:
+                del q['page_num']
+            
+            import html
+            q['text'] = html.unescape(q['text'])
+            q['explanation'] = html.unescape(q.get('explanation', ''))
+            if 'options' in q:
+                for opt in q['options']:
+                    opt['text'] = html.unescape(opt['text'])
+                
             final_questions.append(q)
                     
         return final_questions
@@ -529,11 +586,46 @@ class AIQuestionGenerator:
     # Post-processing / normalisation
     # ------------------------------------------------------------------
 
+    def _is_invalid_question(self, text):
+        """Check if a question is boilerplate text or candidate details, instead of a real question."""
+        text_lower = text.strip().lower()
+        
+        # Drop too short question texts
+        if len(text_lower) < 6:
+            return True
+            
+        # Common boilerplate and Candidate metadata headers
+        boilerplate_keywords = [
+            'candidate', 'instructions to', 'answer all', 'write your', 'maximum marks',
+            'time allowed', 'allowed in', 'consists of', 'this paper', 'duration:',
+            'instruction:', 'section a', 'section b', 'section c', 'invigilator',
+            'supervisor', 'signature of', 'mobile phone', 'calculator', 'do not open',
+            'read all', 'verify that', 'paper consists', 'index number', 'date:',
+            'class:', 'school:', 'subject:', 'mid-term', 'terminal exam', 'annual exam',
+            'name of student', 'name of candidate', 'student name', 'candidate name',
+            'school name', 'stream:', 'academic year', 'examination council'
+        ]
+        
+        # Check if the text matches exactly or contains boilerplate phrases
+        if text_lower in ('instructions', 'instruction', 'section a', 'section b', 'section c', 'general instructions', 'part a', 'part b'):
+            return True
+            
+        for kw in boilerplate_keywords:
+            if kw in text_lower:
+                return True
+                
+        return False
+
     def _normalise(self, questions, question_types, difficulty, count):
         """Ensure every question dict has all required keys and correct types."""
+        import html
         normalised = []
         for idx, q in enumerate(questions):
             if not isinstance(q, dict):
+                continue
+
+            q_text = html.unescape(str(q.get('text', ''))).strip()
+            if self._is_invalid_question(q_text):
                 continue
 
             q_type = q.get('question_type', 'mcq')
@@ -549,16 +641,16 @@ class AIQuestionGenerator:
                 if not isinstance(opt, dict):
                     continue
                 options.append({
-                    'text': str(opt.get('text', '')),
+                    'text': html.unescape(str(opt.get('text', ''))),
                     'is_correct': bool(opt.get('is_correct', False)),
                     'order': int(opt.get('order', oi + 1)),
                 })
 
             normalised.append({
-                'text': str(q.get('text', '')),
+                'text': q_text,
                 'question_type': q_type,
                 'difficulty': q.get('difficulty', difficulty) or difficulty,
-                'explanation': str(q.get('explanation', '')),
+                'explanation': html.unescape(str(q.get('explanation', ''))),
                 'points': float(q.get('points', 5.0)),
                 'options': options,
             })

@@ -2,15 +2,15 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from django.db.models import Avg, Count, Q, Sum
-from apps.assessments.models import Assessment, AssessmentAttempt, AnswerResponse
 from apps.content.models import Subject, Topic
+from apps.assessments.models import Assessment, AssessmentAttempt, AnswerResponse
 
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def student_overview(request):
     """Student's performance overview."""
-    attempts = AssessmentAttempt.objects.filter(student=request.user, status='graded')
+    attempts = AssessmentAttempt.objects.filter(student=request.user, status__in=('submitted', 'graded'))
     total = attempts.count()
     avg = attempts.aggregate(avg=Avg('percentage'))['avg'] or 0
     by_subject = (
@@ -44,16 +44,13 @@ def teacher_class_performance(request):
     attempts = AssessmentAttempt.objects.filter(
         assessment__created_by=request.user
     )
-    graded_attempts = attempts.filter(status='graded')
-    
     total_students = attempts.values('student').distinct().count()
     assessments_created = Assessment.objects.filter(created_by=request.user).count()
-    proctored_exams = Assessment.objects.filter(created_by=request.user, requires_proctoring=True).count()
     
-    avg_score = graded_attempts.aggregate(avg=Avg('percentage'))['avg'] or 0
+    avg_score = attempts.aggregate(avg=Avg('percentage'))['avg'] or 0
     
     by_assessment = (
-        graded_attempts.values('assessment__title')
+        attempts.values('assessment__title')
         .annotate(avg_score=Avg('percentage'), total=Count('id'))
         .order_by('-avg_score')
     )
@@ -72,7 +69,7 @@ def teacher_class_performance(request):
         'total_students': total_students,
         'assessments_created': assessments_created,
         'average_score': round(avg_score, 1),
-        'proctored_exams': proctored_exams,
+        'proctored_exams': 0,
         'total_submissions': attempts.count(),
         'by_assessment': list(by_assessment),
         'common_mistakes': list(common_mistakes),

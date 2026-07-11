@@ -1,139 +1,88 @@
-export type QuestionType = 'mcq' | 'essay' | 'fill_blank' | 'matching' | 'true_false' | 'short_answer'
+// Let's define the Question interfaces here or import from content types.
+// Let's make it fully independent and complete.
 
 export interface QuestionOption {
-  id: string
+  id?: string
   text: string
-  is_correct?: boolean
+  is_correct: boolean
   order: number
 }
 
-export interface MatchingPair {
+export interface AssessmentQuestionDetail {
   id: string
-  left: string
-  right: string
-}
-
-export interface Question {
-  id: string
-  assessment_id: string
-  type: QuestionType
   text: string
-  points: number
-  order: number
-  options?: QuestionOption[]
-  matching_pairs?: MatchingPair[]
-  correct_answer?: string
+  question_type: 'mcq' | 'true_false' | 'fill_blank' | 'short_answer' | 'essay'
+  difficulty: 'easy' | 'medium' | 'hard' | 'critical'
   explanation?: string
-  image_url?: string
-  time_limit?: number
+  points: number
+  options?: QuestionOption[]
+}
+
+export interface AssessmentQuestion {
+  id: string
+  question: AssessmentQuestionDetail
+  order: number
+  points_override?: number
 }
 
 export interface Assessment {
   id: string
   title: string
   description?: string
+  assessment_type: 'quiz' | 'test' | 'assignment' | 'exam' | 'home_package'
   subject: string
   subject_name?: string
-  grade_level: string
-  teacher_id: string
-  teacher_name?: string
-  assessment_type: 'quiz' | 'test' | 'assignment' | 'exam' | 'home_package'
-  duration_minutes: number
-  total_points: number
-  total_questions: number
-  is_published: boolean
-  is_proctored: boolean
-  requires_proctoring: boolean
-  is_file_based?: boolean
-  file_attachment?: string
-  proctoring_config?: ProctoringAssessmentConfig
+  classroom?: string
+  classroom_name?: string
+  status: 'draft' | 'published' | 'closed'
   start_time?: string
   end_time?: string
-  allowed_attempts: number
-  shuffle_questions: boolean
-  show_results: boolean
-  passing_score: number
-  created_at: string
-  updated_at: string
-  status: 'draft' | 'published' | 'closed' | 'archived'
-}
-
-export interface ProctoringAssessmentConfig {
-  require_webcam: boolean
-  require_fullscreen: boolean
-  detect_face: boolean
-  detect_multiple_faces: boolean
-  detect_looking_away: boolean
-  detect_audio: boolean
-  record_video: boolean
-  max_violations: number
-  auto_submit_on_max: boolean
-  require_identity_verification: boolean
-}
-
-export interface Attempt {
-  id: string
-  assessment_id: string
-  student_id: string
-  student_name?: string
-  status: 'in_progress' | 'submitted' | 'graded' | 'abandoned'
-  score?: number
+  duration_minutes?: number
   total_points: number
-  percentage?: number
-  started_at: string
-  submitted_at?: string
-  time_spent_seconds?: number
-  answers: AnswerResponse[]
-  violation_count?: number
-  proctoring_flags?: number
-  submission_file?: string
+  pass_percentage: number
+  questions_limit?: number
+  questions?: AssessmentQuestion[]
+  created_at: string
 }
 
 export interface AnswerResponse {
-  id: string
-  question_id: string
-  attempt_id: string
+  id?: string
+  attempt: string
+  question: string
+  selected_option?: string
   answer_text?: string
-  selected_option_id?: string
-  selected_option_ids?: string[]
-  matching_answers?: Record<string, string>
+  points_awarded?: number
   is_correct?: boolean
-  points_earned?: number
-  feedback?: string
+  teacher_feedback?: string
+  question_detail?: AssessmentQuestionDetail
 }
 
-export interface SubmitAnswerPayload {
-  question_id: string
-  answer_text?: string
-  selected_option_id?: string
-  selected_option_ids?: string[]
-  matching_answers?: Record<string, string>
+export interface AssessmentAttempt {
+  id: string
+  assessment: string
+  assessment_title?: string
+  student: string
+  student_name?: string
+  started_at: string
+  submitted_at?: string
+  score?: number
+  percentage?: number
+  status: 'in_progress' | 'submitted' | 'graded'
+  responses?: AnswerResponse[]
 }
 
-export interface AssessmentCreatePayload {
-  title: string
-  description?: string
-  subject: string
-  grade_level: string
-  duration_minutes: number
-  is_proctored: boolean
-  is_file_based?: boolean
-  file_attachment?: File
-  proctoring_config?: ProctoringAssessmentConfig
-  allowed_attempts: number
-  shuffle_questions: boolean
-  show_results: boolean
-  passing_score: number
-  questions?: QuestionCreatePayload[]
-}
-
-export interface QuestionCreatePayload {
-  type: QuestionType
+// Extracted Draft from PDF parser
+export interface ExtractedOption {
   text: string
-  points: number
+  is_correct: boolean
   order: number
-  options?: Omit<QuestionOption, 'id'>[]
-  matching_pairs?: Omit<MatchingPair, 'id'>[]
-  correct_answer?: string
+}
+
+export interface ExtractedQuestionDraft {
+  text: string
+  question_type: 'mcq' | 'true_false' | 'fill_blank' | 'short_answer' | 'essay'
+  difficulty: 'easy' | 'medium' | 'hard'
+  points: number
   explanation?: string
+  options: ExtractedOption[]
 }

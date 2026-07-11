@@ -37,11 +37,6 @@ app.conf.beat_schedule = {
         'schedule': crontab(hour=3, minute=0, day_of_week=0),  # Weekly on Sunday at 3 AM
         'options': {'queue': 'maintenance'},
     },
-    'auto-grade-overdue-assessments': {
-        'task': 'apps.assessments.tasks.auto_grade_overdue_attempts',
-        'schedule': crontab(minute='*/30'),  # Every 30 minutes
-        'options': {'queue': 'grading'},
-    },
 }
 
 

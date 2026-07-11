@@ -43,7 +43,6 @@ LOCAL_APPS = [
     'apps.schools',
     'apps.content',
     'apps.assessments',
-    'apps.proctoring',
     'apps.subscriptions',
     'apps.payments',
     'apps.analytics',

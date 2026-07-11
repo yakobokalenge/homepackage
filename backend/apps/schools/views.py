@@ -36,16 +36,11 @@ class ClassroomViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['get'])
     def download_results(self, request, pk=None):
-        """Download student results for this classroom in CSV format."""
+        """Download student results for this classroom in CSV format (Assessments disabled)."""
         import csv
         from django.http import HttpResponse
-        from apps.assessments.models import AssessmentAttempt
 
         classroom = self.get_object()
-        attempts = AssessmentAttempt.objects.filter(
-            student__student_profile__classroom=classroom
-        ).select_related('assessment', 'student')
-
         response = HttpResponse(content_type='text/csv')
         response['Content-Disposition'] = f'attachment; filename="results_class_{classroom.name.replace(" ", "_")}.csv"'
 
@@ -54,17 +49,5 @@ class ClassroomViewSet(viewsets.ModelViewSet):
             'Student Name', 'Student Email', 'Phone', 'Assessment Title',
             'Status', 'Score', 'Percentage %', 'Submitted At'
         ])
-
-        for att in attempts:
-            writer.writerow([
-                att.student.full_name,
-                att.student.email,
-                att.student.phone or '',
-                att.assessment.title,
-                att.status,
-                att.score if att.score is not None else '—',
-                att.percentage if att.percentage is not None else '—',
-                att.submitted_at.strftime('%Y-%m-%d %H:%M') if att.submitted_at else '—'
-            ])
-
         return response
+

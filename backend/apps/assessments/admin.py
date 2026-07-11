@@ -9,18 +9,17 @@ class AssessmentQuestionInline(admin.TabularInline):
 
 @admin.register(Assessment)
 class AssessmentAdmin(admin.ModelAdmin):
-    list_display = ('title', 'assessment_type', 'subject', 'status', 'created_by', 'requires_proctoring')
-    list_filter = ('assessment_type', 'status', 'requires_proctoring')
-    search_fields = ('title',)
+    list_display = ('title', 'assessment_type', 'subject', 'status', 'created_by')
+    list_filter = ('assessment_type', 'status')
     inlines = [AssessmentQuestionInline]
 
 
 @admin.register(AssessmentAttempt)
-class AttemptAdmin(admin.ModelAdmin):
-    list_display = ('student', 'assessment', 'status', 'score', 'percentage', 'started_at')
+class AssessmentAttemptAdmin(admin.ModelAdmin):
+    list_display = ('student', 'assessment', 'score', 'percentage', 'started_at')
     list_filter = ('status',)
 
 
 @admin.register(AnswerResponse)
 class AnswerResponseAdmin(admin.ModelAdmin):
-    list_display = ('attempt', 'question', 'is_correct', 'points_awarded')
+    list_display = ('attempt', 'question', 'points_awarded', 'is_correct')

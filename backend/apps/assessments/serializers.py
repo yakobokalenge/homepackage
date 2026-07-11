@@ -1,103 +1,59 @@
 from rest_framework import serializers
-from .models import Assessment, AssessmentQuestion, AssessmentAttempt, AnswerResponse
+from django.contrib.auth import get_user_model
 from apps.content.serializers import QuestionSerializer
+from apps.schools.serializers import ClassroomSerializer
+from .models import Assessment, AssessmentQuestion, AssessmentAttempt, AnswerResponse
+
+User = get_user_model()
 
 
 class AssessmentQuestionSerializer(serializers.ModelSerializer):
-    question_detail = QuestionSerializer(source='question', read_only=True)
+    question = QuestionSerializer(read_only=True)
 
     class Meta:
         model = AssessmentQuestion
-        fields = ('id', 'question', 'question_detail', 'order', 'points_override')
+        fields = ['id', 'question', 'order', 'points_override']
 
 
 class AssessmentSerializer(serializers.ModelSerializer):
-    questions = AssessmentQuestionSerializer(source='assessment_questions', many=True, read_only=True)
-    question_count = serializers.SerializerMethodField()
-    created_by_name = serializers.CharField(source='created_by.full_name', read_only=True)
+    subject_name = serializers.ReadOnlyField(source='subject.name')
+    classroom_detail = ClassroomSerializer(source='classroom', read_only=True)
+    questions = serializers.SerializerMethodField()
 
     class Meta:
         model = Assessment
-        fields = '__all__'
-        read_only_fields = ('id', 'created_by', 'total_points', 'created_at', 'updated_at')
+        fields = [
+            'id', 'title', 'description', 'assessment_type', 'subject', 
+            'subject_name', 'classroom', 'classroom_detail', 'status', 
+            'start_time', 'end_time', 'duration_minutes', 'total_points', 
+            'pass_percentage', 'questions_limit', 'questions', 'created_at'
+        ]
+        read_only_fields = ['created_by', 'school', 'total_points']
 
-    def get_question_count(self, obj):
-        return obj.assessment_questions.count()
-
-    def validate_file_attachment(self, value):
-        if value:
-            if value.size > 50 * 1024 * 1024:
-                raise serializers.ValidationError("File size cannot exceed 50MB.")
-            ext = value.name.split('.')[-1].lower()
-            if ext not in ['pdf', 'doc', 'docx']:
-                raise serializers.ValidationError("Only PDF and Word (.doc, .docx) files are allowed.")
-        return value
-
-    def create(self, validated_data):
-        validated_data['created_by'] = self.context['request'].user
-        return super().create(validated_data)
-
-
-class AssessmentListSerializer(serializers.ModelSerializer):
-    subject_name = serializers.CharField(source='subject.name', read_only=True)
-    classroom_name = serializers.CharField(source='classroom.name', read_only=True)
-    created_by_name = serializers.CharField(source='created_by.full_name', read_only=True)
-    question_count = serializers.SerializerMethodField()
-
-    class Meta:
-        model = Assessment
-        fields = ('id', 'title', 'assessment_type', 'subject', 'subject_name', 'classroom', 'classroom_name', 'status',
-                  'start_time', 'end_time', 'duration_minutes', 'requires_proctoring', 'questions_limit',
-                  'is_file_based', 'file_attachment',
-                  'question_count', 'created_by_name', 'created_at')
-
-    def get_question_count(self, obj):
-        return obj.assessment_questions.count()
+    def get_questions(self, obj):
+        links = obj.assessment_questions.all()
+        return AssessmentQuestionSerializer(links, many=True).data
 
 
 class AnswerResponseSerializer(serializers.ModelSerializer):
-    question_detail = QuestionSerializer(source='question', read_only=True)
-
     class Meta:
         model = AnswerResponse
-        fields = (
-            'id', 'question', 'question_detail', 'answer_text',
-            'selected_options', 'answer_data', 'time_spent_seconds',
-            'is_correct', 'points_awarded', 'teacher_feedback'
-        )
-
-    def create(self, validated_data):
-        selected = validated_data.pop('selected_options', [])
-        response = AnswerResponse.objects.create(**validated_data)
-        if selected:
-            response.selected_options.set(selected)
-        return response
+        fields = [
+            'id', 'attempt', 'question', 'selected_option', 
+            'answer_text', 'points_awarded', 'is_correct', 'teacher_feedback'
+        ]
 
 
-class AttemptSerializer(serializers.ModelSerializer):
+class AssessmentAttemptSerializer(serializers.ModelSerializer):
+    student_name = serializers.ReadOnlyField(source='student.full_name')
+    assessment_title = serializers.ReadOnlyField(source='assessment.title')
     responses = AnswerResponseSerializer(many=True, read_only=True)
-    student_name = serializers.CharField(source='student.full_name', read_only=True)
-    assessment_title = serializers.CharField(source='assessment.title', read_only=True)
 
     class Meta:
         model = AssessmentAttempt
-        fields = '__all__'
-        read_only_fields = ('id', 'student', 'started_at', 'submitted_at', 'score', 'percentage')
-
-    def validate_submission_file(self, value):
-        if value:
-            if value.size > 15 * 1024 * 1024:
-                raise serializers.ValidationError("Submission size cannot exceed 15MB.")
-            ext = value.name.split('.')[-1].lower()
-            if ext not in ['pdf', 'doc', 'docx', 'jpg', 'jpeg', 'png']:
-                raise serializers.ValidationError("Allowed formats: PDF, Word, or Images (JPG, PNG).")
-        return value
-
-
-class AttemptResultSerializer(serializers.ModelSerializer):
-    assessment_title = serializers.CharField(source='assessment.title', read_only=True)
-
-    class Meta:
-        model = AssessmentAttempt
-        fields = ('id', 'assessment', 'assessment_title', 'status', 'score', 'percentage',
-                  'started_at', 'submitted_at', 'time_spent_seconds')
+        fields = [
+            'id', 'assessment', 'assessment_title', 'student', 
+            'student_name', 'started_at', 'submitted_at', 'score', 
+            'percentage', 'status', 'responses'
+        ]
+        read_only_fields = ['student', 'started_at', 'submitted_at', 'score', 'percentage']

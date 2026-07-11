@@ -33,19 +33,9 @@ const router = createRouter({
     },
     {
       path: '/student/exam/:id',
-      component: () => import('@/layouts/ExamLayout.vue'),
-      meta: { requiresAuth: true, role: 'student' },
-      children: [
-        { path: '', name: 'take-exam', component: () => import('@/pages/student/ExamPage.vue') },
-      ]
-    },
-    {
-      path: '/student/exam/:id/proctored',
-      component: () => import('@/layouts/ProctoredLayout.vue'),
-      meta: { requiresAuth: true, role: 'student' },
-      children: [
-        { path: '', name: 'proctored-exam', component: () => import('@/pages/student/ProctoredExamPage.vue') },
-      ]
+      name: 'take-exam',
+      component: () => import('@/pages/student/ExamPage.vue'),
+      meta: { requiresAuth: true, role: 'student' }
     },
     {
       path: '/teacher',
@@ -54,8 +44,6 @@ const router = createRouter({
       children: [
         { path: 'dashboard', name: 'teacher-dashboard', component: () => import('@/pages/teacher/DashboardPage.vue') },
         { path: 'assessments/create', name: 'create-assessment', component: () => import('@/pages/teacher/CreateAssessmentPage.vue') },
-        { path: 'assessments/:id/review', name: 'review-proctoring', component: () => import('@/pages/teacher/ReviewProctoringPage.vue') },
-        { path: 'attempts/:id/grade', name: 'grade-attempt', component: () => import('@/pages/teacher/GradeAttemptPage.vue') },
         { path: 'billing', name: 'teacher-billing', component: () => import('@/pages/billing/BillingPage.vue') },
       ]
     },
