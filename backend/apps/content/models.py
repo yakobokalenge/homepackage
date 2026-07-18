@@ -66,6 +66,21 @@ class Question(models.Model):
     metadata = models.JSONField(default=dict, blank=True)
     is_public = models.BooleanField(default=False)
     is_approved = models.BooleanField(default=False)
+    class_level = models.CharField(max_length=50, blank=True, default='')
+    subtopic = models.CharField(max_length=200, blank=True, default='')
+    curriculum = models.CharField(max_length=100, blank=True, default='Tanzania NECTA')
+    language = models.CharField(max_length=50, blank=True, default='English')
+    status = models.CharField(
+        max_length=20,
+        choices=[
+            ('draft', 'Draft'),
+            ('pending', 'Pending Review'),
+            ('approved', 'Approved'),
+            ('rejected', 'Rejected')
+        ],
+        default='approved'
+    )
+    author_name = models.CharField(max_length=100, blank=True, default='')
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -111,3 +126,59 @@ class QuestionBank(models.Model):
 
     def __str__(self):
         return self.name
+
+
+class QuestionUsage(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    question = models.OneToOneField(Question, on_delete=models.CASCADE, related_name='usage_stats')
+    used_count = models.PositiveIntegerField(default=0, help_text='Number of assessments this question is featured in')
+    attempts_count = models.PositiveIntegerField(default=0, help_text='Total student answers for this question')
+    correct_count = models.PositiveIntegerField(default=0, help_text='Number of correct answers')
+    average_time_seconds = models.FloatField(default=0.0)
+    difficulty_index = models.FloatField(default=0.0, help_text='Correct Rate (0.0 to 1.0)')
+    discrimination_index = models.FloatField(default=0.0, help_text='Discrimination index')
+    
+    def __str__(self):
+        return f"Stats for {self.question_id}"
+
+
+def recalculate_question_stats(question_ids):
+    """Recalculates performance metrics for specific questions based on graded student attempts."""
+    from apps.content.models import QuestionUsage
+    from apps.assessments.models import AnswerResponse, AssessmentQuestion
+    
+    for q_id in question_ids:
+        usage, _ = QuestionUsage.objects.get_or_create(question_id=q_id)
+        
+        # 1. Used count
+        usage.used_count = AssessmentQuestion.objects.filter(question_id=q_id).count()
+        
+        # 2. Student response statistics
+        responses = AnswerResponse.objects.filter(question_id=q_id, attempt__status='graded')
+        usage.attempts_count = responses.count()
+        
+        if usage.attempts_count > 0:
+            usage.correct_count = responses.filter(is_correct=True).count()
+            usage.difficulty_index = round(usage.correct_count / usage.attempts_count, 2)
+            usage.average_time_seconds = 45.0 # baseline average mock
+            
+            # Discrimination Index: Correct rate of upper scorers vs lower scorers
+            attempts = list(responses.select_related('attempt'))
+            attempts.sort(key=lambda x: x.attempt.percentage or 0, reverse=True)
+            mid = len(attempts) // 2
+            if mid > 0:
+                top_group = attempts[:mid]
+                bottom_group = attempts[mid:]
+                top_correct = sum(1 for r in top_group if r.is_correct)
+                bottom_correct = sum(1 for r in bottom_group if r.is_correct)
+                top_rate = top_correct / len(top_group)
+                bottom_rate = bottom_correct / len(bottom_group)
+                usage.discrimination_index = round(top_rate - bottom_rate, 2)
+            else:
+                usage.discrimination_index = 0.0
+        else:
+            usage.correct_count = 0
+            usage.difficulty_index = 0.0
+            usage.discrimination_index = 0.0
+            
+        usage.save()

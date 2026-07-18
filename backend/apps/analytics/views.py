@@ -9,19 +9,33 @@ from apps.assessments.models import Assessment, AssessmentAttempt, AnswerRespons
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def student_overview(request):
-    """Student's performance overview."""
-    attempts = AssessmentAttempt.objects.filter(student=request.user, status__in=('submitted', 'graded'))
-    total = attempts.count()
-    avg = attempts.aggregate(avg=Avg('percentage'))['avg'] or 0
-    by_subject = (
-        attempts.values('assessment__subject__name')
-        .annotate(avg_score=Avg('percentage'), count=Count('id'))
-        .order_by('-avg_score')
-    )
+    """Student's performance overview querying real attempts."""
+    student = request.user
+    attempts = AssessmentAttempt.objects.filter(student=student, status='graded')
+    
+    total_assessments = attempts.count()
+    avg_score = attempts.aggregate(avg=Avg('percentage'))['avg'] or 0.0
+
+    # Aggregate by subject
+    by_subject = []
+    subjects = Subject.objects.filter(assessments__attempts__student=student).distinct()
+    for sub in subjects:
+        sub_attempts = attempts.filter(assessment__subject=sub)
+        sub_count = sub_attempts.count()
+        sub_avg = sub_attempts.aggregate(avg=Avg('percentage'))['avg'] or 0.0
+        if sub_count > 0:
+            by_subject.append({
+                'subject_id': str(sub.id),
+                'subject_name': sub.name,
+                'subject_code': sub.code,
+                'attempts_count': sub_count,
+                'average_score': round(float(sub_avg), 2),
+            })
+
     return Response({
-        'total_assessments': total,
-        'average_score': round(avg, 1),
-        'by_subject': list(by_subject),
+        'total_assessments': total_assessments,
+        'average_score': round(float(avg_score), 2),
+        'by_subject': by_subject,
     })
 
 
@@ -29,51 +43,102 @@ def student_overview(request):
 @permission_classes([IsAuthenticated])
 def weak_topics(request):
     """Identify student's weak topics based on incorrect answers."""
-    responses = AnswerResponse.objects.filter(
-        attempt__student=request.user, is_correct=False
-    ).values('question__topic__name', 'question__subject__name').annotate(
-        wrong_count=Count('id')
-    ).order_by('-wrong_count')[:10]
-    return Response(list(responses))
+    student = request.user
+    # Find all incorrect answer responses
+    incorrect_responses = AnswerResponse.objects.filter(
+        attempt__student=student,
+        is_correct=False,
+        question__topic__isnull=False
+    ).select_related('question__topic__subject')
+
+    topic_counts = {}
+    for resp in incorrect_responses:
+        topic = resp.question.topic
+        if topic:
+            if topic.id not in topic_counts:
+                topic_counts[topic.id] = {
+                    'topic_name': topic.name,
+                    'subject_name': topic.subject.name,
+                    'incorrect_count': 0
+                }
+            topic_counts[topic.id]['incorrect_count'] += 1
+
+    # Sort topics by incorrect count descending
+    sorted_topics = sorted(topic_counts.values(), key=lambda x: x['incorrect_count'], reverse=True)
+    return Response(sorted_topics[:5])
 
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def teacher_class_performance(request):
-    """Teacher's class-level analytics."""
-    attempts = AssessmentAttempt.objects.filter(
-        assessment__created_by=request.user
-    )
-    total_students = attempts.values('student').distinct().count()
-    assessments_created = Assessment.objects.filter(created_by=request.user).count()
-    
-    avg_score = attempts.aggregate(avg=Avg('percentage'))['avg'] or 0
-    
-    by_assessment = (
-        attempts.values('assessment__title')
-        .annotate(avg_score=Avg('percentage'), total=Count('id'))
-        .order_by('-avg_score')
-    )
+    """Teacher's class-level analytics querying real classrooms and attempts."""
+    teacher = request.user
+    if teacher.role != 'teacher':
+        return Response({'error': 'Only teachers can access class performance metrics.'}, status=403)
 
-    common_mistakes = (
-        AnswerResponse.objects.filter(
-            question__created_by=request.user,
-            is_correct=False
-        )
-        .values('question__text', 'question__subject__name')
-        .annotate(wrong_count=Count('id'))
-        .order_by('-wrong_count')[:5]
-    )
+    from apps.schools.models import Classroom
+    from apps.accounts.models import StudentProfile
     
+    # Classrooms where the teacher is class_teacher
+    classrooms = Classroom.objects.filter(class_teacher=teacher)
+    classroom_ids = classrooms.values_list('id', flat=True)
+    
+    # Total students in those classrooms
+    total_students = StudentProfile.objects.filter(classroom__in=classroom_ids).count()
+    
+    # Assessments created by this teacher
+    assessments = Assessment.objects.filter(created_by=teacher)
+    assessments_created = assessments.count()
+    
+    # Attempts on teacher's assessments
+    attempts = AssessmentAttempt.objects.filter(assessment__created_by=teacher, status__in=['submitted', 'graded'])
+    total_submissions = attempts.count()
+    
+    graded_attempts = attempts.filter(status='graded')
+    avg_score = graded_attempts.aggregate(avg=Avg('percentage'))['avg'] or 0.0
+    
+    proctored_exams = assessments.filter(is_proctored=True).count()
+
+    # Performance by assessment
+    by_assessment = []
+    for ass in assessments:
+        ass_attempts = graded_attempts.filter(assessment=ass)
+        ass_avg = ass_attempts.aggregate(avg=Avg('percentage'))['avg'] or 0.0
+        ass_count = ass_attempts.count()
+        by_assessment.append({
+            'assessment_id': str(ass.id),
+            'title': ass.title,
+            'assessment_type': ass.assessment_type,
+            'submissions_count': ass_count,
+            'average_score': round(float(ass_avg), 2),
+        })
+
+    # Common mistakes: questions with highest incorrect rates on teacher's assessments
+    common_mistakes = []
+    incorrect_questions = AnswerResponse.objects.filter(
+        attempt__assessment__created_by=teacher,
+        is_correct=False
+    ).values('question__id', 'question__text').annotate(
+        incorrect_count=Count('id')
+    ).order_by('-incorrect_count')[:5]
+
+    for item in incorrect_questions:
+        common_mistakes.append({
+            'question_id': str(item['question__id']),
+            'question_text': item['question__text'][:100],
+            'incorrect_count': item['incorrect_count']
+        })
+
     return Response({
         'total_students': total_students,
         'assessments_created': assessments_created,
-        'average_score': round(avg_score, 1),
-        'proctored_exams': 0,
-        'total_submissions': attempts.count(),
-        'by_assessment': list(by_assessment),
-        'common_mistakes': list(common_mistakes),
+        'average_score': round(float(avg_score), 2),
+        'proctored_exams': proctored_exams,
+        'total_submissions': total_submissions,
+        'by_assessment': by_assessment,
+        'common_mistakes': common_mistakes,
     })
+
 
 
 @api_view(['GET'])

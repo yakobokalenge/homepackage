@@ -100,7 +100,10 @@ class AIQuestionGenerator:
             "You must ensure the converted questions look EXACTLY the same as they did in the PDF format.\n\n"
             "CRITICAL RULES:\n"
             "1. IGNORE NON-QUESTION CONTENT: Do not extract document headers, title blocks, candidate metadata lines (e.g. name, date, index number), "
-            "instructions to candidates, marks distributions tables, page numbers, or footers. Exclude these completely from your JSON output.\n"
+            "instructions to candidates, marks distributions tables, page numbers, or footers. Exclude these completely from your JSON output. "
+            "Note: Some instructions may be numbered (e.g., '1. Remember to write your three names properly.', '2. Answer all questions.', '3. Read questions carefully.'). "
+            "Do NOT extract these numbered lines as questions. Also ignore candidate details like 'NAME: ________________ CLASS: ________' and section headers "
+            "like 'SECTION A: MATHEMATICAL OPERATIONS (20 MARKS)'.\n"
             "2. PRESERVE ORIGINAL FORMATTING: Do not simplify or split complex questions. If a question has sub-parts "
             "(e.g., (a), (b), (i), (ii)), has multi-line layouts, custom tables, or specialized formatting, keep them "
             "exactly as they appear in the PDF. Put the entire layout inside the 'text' field.\n"
@@ -114,6 +117,9 @@ class AIQuestionGenerator:
             "6. Each element must have keys: text, question_type, difficulty, explanation, points, options.\n"
             "7. Set points to 5.0 for all questions.\n"
             "8. ILLUSTRATIONS & DIAGRAMS: The text may contain image references like '[IMAGE: /media/extracted_images/xyz.png]' or page-level graphics like '[Page N Illustrations: Image A: /media/extracted_images/abc.png]'. If a question refers to or requires an image, graph, diagram, or illustration, you MUST insert a standard HTML image tag: <img src=\"/media/extracted_images/xyz.png\" class=\"my-4 max-w-full rounded-xl shadow-sm block\" /> inside the 'text' field of the question at the exact position it belongs.\n"
+            "9. DO NOT TRUNCATE QUESTIONS: Make sure every question is fully captured. Do not omit any sub-parts, equations, trailing instructions (like 'Explain your choice'), or details. Ensure the question text makes complete sense on its own.\n"
+
+
         )
         
         user_prompt = (
@@ -177,11 +183,28 @@ class AIQuestionGenerator:
                 img_url = key_val[1].strip()
                 illustrations[(page_num, img_label)] = img_url
 
+        # 1b. Pre-process mid-line questions (e.g. side-by-side columns)
+        # In worksheets, questions might be extracted horizontally like: "1. 3+2=  2. 5+4="
+        # We split them onto separate lines so the line-by-line parser handles them correctly.
+        processed_text = []
+        for raw_line in text.split('\n'):
+            line_processed = raw_line
+            # Loop re.sub to handle consecutive/overlapping column number matches (e.g. "9. 47.")
+            # We match only dot separators to avoid matching parentheses in math expressions like "(36 + 64)"
+            while True:
+                new_line = re.sub(r'(?<=\S)[^\S\n]+(\d+)\.\s+(?!\d+\.\s+)', r'\n\1. ', line_processed)
+                if new_line == line_processed:
+                    break
+                line_processed = new_line
+            processed_text.append(line_processed)
+        text = '\n'.join(processed_text)
+
         # Split text into lines and clean
         lines = [line.strip() for line in text.split('\n') if line.strip()]
         
         current_question = None
         current_page_num = 1
+        expected_q_num = 1
         
         # Matches patterns like: "1. ", "2) ", "Q3: ", "Question 4: "
         q_pattern = re.compile(r'^(?:(?:[qQ]uestion|[qQ])\s*)?(\d+)[.\s)]\s*(.*)$')
@@ -193,28 +216,32 @@ class AIQuestionGenerator:
         noise_patterns = [
             re.compile(r'^page\s*\d+', re.I),
             re.compile(r'^\d+\s*of\s*\d+$', re.I),
-            re.compile(r'^turn\s*over', re.I),
-            re.compile(r'^p\.t\.o', re.I),
-            re.compile(r'^name\s*:', re.I),
-            re.compile(r'^index\s*(?:number)?\s*:', re.I),
-            re.compile(r'^date\s*:', re.I),
-            re.compile(r'^class\s*:', re.I),
-            re.compile(r'^signature\s*:', re.I),
-            re.compile(r'^time\s*:', re.I),
-            re.compile(r'^marks\s*:', re.I),
-            re.compile(r'^subject\s*:', re.I),
-            re.compile(r'^instructions\s*:', re.I),
-            re.compile(r'^candidate\s*:', re.I),
-            re.compile(r'^school\s*:', re.I),
-            re.compile(r'^mid[- ]term', re.I),
-            re.compile(r'^terminal\s+exam', re.I),
-            re.compile(r'^annual\s+exam', re.I),
-            re.compile(r'^test\s+paper', re.I),
-            re.compile(r'^maximum\s+marks', re.I),
-            re.compile(r'^time\s+allowed', re.I),
+            re.compile(r'^turn\s*over\b', re.I),
+            re.compile(r'^p\.t\.o\b', re.I),
+            re.compile(r'^name\b\s*:', re.I),
+            re.compile(r'^index\b\s*(?:number)?\s*:', re.I),
+            re.compile(r'^date\b\s*:', re.I),
+            re.compile(r'^class\b\s*:', re.I),
+            re.compile(r'^signature\b', re.I),
+            re.compile(r'^time\b\s*:', re.I),
+            re.compile(r'^marks?\b\s*:', re.I),
+            re.compile(r'^subject\b\s*:', re.I),
+            re.compile(r'^instructions\b', re.I),
+            re.compile(r'^candidate\b', re.I),
+            re.compile(r'^school\b\s*:', re.I),
+            re.compile(r'^sections?\b', re.I),
+            re.compile(r'^parts?\b', re.I),
+            re.compile(r'^choose\s+(?:the|all|any|correct)\b', re.I),
+            re.compile(r'^answer\s+(?:the|all|any|each|following)\b', re.I),
+            re.compile(r'^mid[- ]term\b', re.I),
+            re.compile(r'^terminal\s+exam\b', re.I),
+            re.compile(r'^annual\s+exam\b', re.I),
+            re.compile(r'^test\s+paper\b', re.I),
+            re.compile(r'^maximum\s+marks\b', re.I),
+            re.compile(r'^time\s+allowed\b', re.I),
             re.compile(r'^hours?\s*$', re.I),
-            re.compile(r'^footer', re.I),
-            re.compile(r'^end\s*of', re.I)
+            re.compile(r'^footer\b', re.I),
+            re.compile(r'^end\s+of\b', re.I)
         ]
         
         def is_boilerplate(q_text):
@@ -241,19 +268,34 @@ class AIQuestionGenerator:
                 continue
                 
             q_match = q_pattern.match(line)
+            is_new_question = False
             if q_match:
+                q_num = int(q_match.group(1))
+                q_text = q_match.group(2).strip()
+                # Check that this matched line is not instruction boilerplate before setting as new question.
+                # We only check is_boilerplate if the extracted text has content to avoid flagging empty question numbers.
+                is_bp = False
+                if len(q_text) >= 6:
+                    is_bp = is_boilerplate(q_text)
+                
+                if not is_bp:
+                    if expected_q_num == 1 or (q_num >= expected_q_num and q_num <= expected_q_num + 3):
+                        is_new_question = True
+                        expected_q_num = q_num + 1
+
+            if is_new_question and q_match:
                 if current_question:
                     if not is_boilerplate(current_question['text']):
                         questions.append(current_question)
                 
-                q_num = q_match.group(1)
+                q_num_str = q_match.group(1)
                 q_text = q_match.group(2).strip()
                 
                 current_question = {
                     'text': q_text,
                     'question_type': 'essay',  # default type
                     'difficulty': 'medium',
-                    'explanation': f'Extracted from question {q_num}.',
+                    'explanation': f'Extracted from question {q_num_str}.',
                     'points': 5.0,
                     'options': [],
                     'page_num': current_page_num
@@ -278,9 +320,9 @@ class AIQuestionGenerator:
                         'order': len(current_question['options']) + 1
                     })
                 else:
-                    # Append extra text line to current question description if options haven't started
-                    if not current_question['options']:
-                        current_question['text'] += "\n" + line
+                    # Append extra text line (like subparts or suffix instructions) to current question
+                    current_question['text'] += "\n" + line
+
                         
         if current_question:
             if not is_boilerplate(current_question['text']):
@@ -594,26 +636,53 @@ class AIQuestionGenerator:
         if len(text_lower) < 6:
             return True
             
-        # Common boilerplate and Candidate metadata headers
-        boilerplate_keywords = [
-            'candidate', 'instructions to', 'answer all', 'write your', 'maximum marks',
-            'time allowed', 'allowed in', 'consists of', 'this paper', 'duration:',
-            'instruction:', 'section a', 'section b', 'section c', 'invigilator',
-            'supervisor', 'signature of', 'mobile phone', 'calculator', 'do not open',
-            'read all', 'verify that', 'paper consists', 'index number', 'date:',
-            'class:', 'school:', 'subject:', 'mid-term', 'terminal exam', 'annual exam',
-            'name of student', 'name of candidate', 'student name', 'candidate name',
-            'school name', 'stream:', 'academic year', 'examination council'
+        # Highly specific boilerplate substring matches (should never appear in actual questions)
+        metadata_substrings = [
+            'instructions to candidates', 'answer all questions', 'write your name',
+            'signature of candidate', 'candidate name:', 'student name:', 'index number:',
+            'mobile phones are not allowed', 'calculators are not allowed', 'do not open this booklet',
+            'verify that this paper consists of', 'name of student:', 'name of candidate:',
+            'remember to write', 'names properly', 'read all questions', 'read carefully',
+            'holiday package', 'returned to school', 'when we open', 'answer as per instructions',
+            'mathematical operations', 'marks', 'section a', 'section b', 'section c',
+            'part a', 'part b', 'part c', 'general instructions', 'time allowed',
+            'show all steps', 'show your working', 'without borrowing', 'do not open',
+            'write index number', 'write your three names'
         ]
-        
-        # Check if the text matches exactly or contains boilerplate phrases
-        if text_lower in ('instructions', 'instruction', 'section a', 'section b', 'section c', 'general instructions', 'part a', 'part b'):
+        for sub in metadata_substrings:
+            if sub in text_lower:
+                return True
+
+        # Header metadata prefix patterns (labels at the start of text)
+        prefix_patterns = [
+            r'^(?:candidate|student|school|class|subject|date|time|marks|duration|instruction|stream|academic year|index number)\s*:',
+            r'^(?:mid-term|terminal exam|annual exam|test paper|examination council|maximum marks|time allowed)\b',
+            r'^name\s*:?\s*[_.\s]{3,}',
+            r'^class\s*:?\s*[_.\s]{3,}',
+            r'^index\b',
+            r'^section\b',
+            r'^part\b',
+            r'^instructions\b',
+            r'^answer all\b',
+            r'^write your\b',
+            r'^read the\b',
+            r'^remember to\b'
+        ]
+        import re
+        for pattern in prefix_patterns:
+            if re.search(pattern, text_lower):
+                return True
+
+        # Exact matching for sections or metadata labels
+        exact_matches = {
+            'instructions', 'instruction', 'section a', 'section b', 'section c', 
+            'general instructions', 'part a', 'part b', 'part c', 'candidate', 
+            'invigilator', 'supervisor', 'signature', 'date', 'class', 'school',
+            'subject', 'stream', 'hours', 'hour'
+        }
+        if text_lower in exact_matches:
             return True
             
-        for kw in boilerplate_keywords:
-            if kw in text_lower:
-                return True
-                
         return False
 
     def _normalise(self, questions, question_types, difficulty, count):

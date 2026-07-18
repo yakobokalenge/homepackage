@@ -22,11 +22,12 @@ urlpatterns = [
     path('api/v1/auth/', include('apps.accounts.urls')),
     path('api/v1/schools/', include('apps.schools.urls')),
     path('api/v1/content/', include('apps.content.urls')),
-    path('api/v1/', include('apps.assessments.urls')),
     path('api/v1/subscriptions/', include('apps.subscriptions.urls')),
     path('api/v1/payments/', include('apps.payments.urls')),
     path('api/v1/analytics/', include('apps.analytics.urls')),
     path('api/v1/notifications/', include('apps.notifications.urls')),
+    path('api/v1/assessments/', include('apps.assessments.urls')),
+    path('api/v1/proctoring/', include('apps.proctoring.urls')),
 ]
 
 if settings.DEBUG:

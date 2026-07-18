@@ -1,3 +1,4 @@
 export * from './user'
 export * from './payment'
 export * from './assessment'
+export * from './proctoring'

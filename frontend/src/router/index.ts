@@ -27,15 +27,18 @@ const router = createRouter({
       meta: { requiresAuth: true, role: 'student' },
       children: [
         { path: 'dashboard', name: 'student-dashboard', component: () => import('@/pages/student/DashboardPage.vue') },
-        { path: 'assessments', name: 'student-assessments', component: () => import('@/pages/student/AssessmentsPage.vue') },
         { path: 'billing', name: 'student-billing', component: () => import('@/pages/billing/BillingPage.vue') },
+        { path: 'assessments', name: 'student-assessments', component: () => import('@/pages/student/AssessmentsPage.vue') },
+        { path: 'attempts/:id/result', name: 'student-attempt-result', component: () => import('@/pages/student/AssessmentResultPage.vue') },
       ]
     },
     {
-      path: '/student/exam/:id',
-      name: 'take-exam',
-      component: () => import('@/pages/student/ExamPage.vue'),
-      meta: { requiresAuth: true, role: 'student' }
+      path: '/student/assessments/:id/take',
+      component: () => import('@/layouts/ExamLayout.vue'),
+      meta: { requiresAuth: true, role: 'student' },
+      children: [
+        { path: '', name: 'take-assessment', component: () => import('@/pages/student/TakeAssessmentPage.vue') }
+      ]
     },
     {
       path: '/teacher',
@@ -43,8 +46,13 @@ const router = createRouter({
       meta: { requiresAuth: true, role: 'teacher' },
       children: [
         { path: 'dashboard', name: 'teacher-dashboard', component: () => import('@/pages/teacher/DashboardPage.vue') },
-        { path: 'assessments/create', name: 'create-assessment', component: () => import('@/pages/teacher/CreateAssessmentPage.vue') },
         { path: 'billing', name: 'teacher-billing', component: () => import('@/pages/billing/BillingPage.vue') },
+        { path: 'assessments', name: 'teacher-assessments', component: () => import('@/pages/teacher/AssessmentsPage.vue') },
+        { path: 'assessments/create', name: 'teacher-assessment-create', component: () => import('@/pages/teacher/CreateAssessmentPage.vue') },
+        { path: 'assessments/:id', name: 'teacher-assessment-detail', component: () => import('@/pages/teacher/AssessmentDetailPage.vue') },
+        { path: 'attempts/:id/grade', name: 'teacher-grade-attempt', component: () => import('@/pages/teacher/GradeAttemptPage.vue') },
+        { path: 'proctoring/:attemptId', name: 'teacher-review-proctoring', component: () => import('@/pages/teacher/ReviewProctoringPage.vue') },
+        { path: 'question-bank', name: 'teacher-question-bank', component: () => import('@/pages/teacher/QuestionBankPage.vue') },
       ]
     },
     {

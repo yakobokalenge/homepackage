@@ -27,14 +27,15 @@ const menuItems = computed(() => {
   if (auth.isTeacher) {
     return [
       { icon: '📊', label: t('nav.dashboard'), to: '/teacher/dashboard' },
-      { icon: '📝', label: t('nav.assessments'), to: '/teacher/assessments/create' },
+      { icon: '📋', label: 'Assessments', to: '/teacher/assessments' },
+      { icon: '🗂️', label: 'Question Bank', to: '/teacher/question-bank' },
       { icon: '💳', label: t('nav.billing'), to: '/teacher/billing' },
       { icon: '⚙️', label: t('nav.settings'), to: '#' },
     ]
   }
   return [
     { icon: '📊', label: t('nav.dashboard'), to: '/student/dashboard' },
-    { icon: '📝', label: t('nav.assessments'), to: '/student/assessments' },
+    { icon: '📋', label: 'Assessments', to: '/student/assessments' },
     { icon: '💳', label: t('nav.billing'), to: '/student/billing' },
     { icon: '⚙️', label: t('nav.settings'), to: '#' },
   ]
