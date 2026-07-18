@@ -1,0 +1,56 @@
+services:
+  # 1. Django Web Service (Gunicorn server serving the REST API)
+  - type: web
+    name: homepackage-api
+    env: docker
+    dockerfilePath: backend/Dockerfile
+    buildCommand: ""
+    startCommand: "gunicorn homepackage.wsgi:application --bind 0.0.0.0:10000 --workers 3"
+    plan: free
+    envVars:
+      - key: DJANGO_SETTINGS_MODULE
+        value: homepackage.settings.production
+      - key: DATABASE_URL
+        fromDatabase:
+          name: homepackage-db
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: homepackage-redis
+          property: connectionString
+      - key: SECRET_KEY
+        generateValue: true
+
+  # 2. Celery Worker (Background tasks executor)
+  - type: worker
+    name: homepackage-worker
+    env: docker
+    dockerfilePath: backend/Dockerfile
+    buildCommand: ""
+    startCommand: "celery -A homepackage worker -l info --concurrency=4"
+    plan: free
+    envVars:
+      - key: DJANGO_SETTINGS_MODULE
+        value: homepackage.settings.production
+      - key: DATABASE_URL
+        fromDatabase:
+          name: homepackage-db
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: homepackage-redis
+          property: connectionString
+
+# 3. Managed PostgreSQL Database
+databases:
+  - name: homepackage-db
+    plan: free
+
+# 4. Redis Service (Private Cache / Celery Broker)
+interfaces:
+  - type: redis
+    name: homepackage-redis
+    plan: free
+    ipAllowList: [] # Keep private to internal network

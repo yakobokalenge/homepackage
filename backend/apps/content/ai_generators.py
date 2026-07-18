@@ -62,7 +62,7 @@ class AIQuestionGenerator:
     # ------------------------------------------------------------------
 
     def generate(self, subject_name, topic_name, question_types, difficulty,
-                 count, custom_prompt=''):
+                 count, custom_prompt='', grade_level='', assessment_type=''):
         """Generate *count* questions and return a list of question dicts.
 
         Each dict has keys: text, question_type, difficulty, explanation,
@@ -72,7 +72,7 @@ class AIQuestionGenerator:
 
         system_prompt, user_prompt = self._build_prompt(
             subject_name, topic_name, question_types, difficulty, count,
-            custom_prompt,
+            custom_prompt, grade_level, assessment_type
         )
 
         method_name = self.PROVIDERS.get(self.provider, '_generate_auto')
@@ -81,7 +81,41 @@ class AIQuestionGenerator:
         try:
             questions = method(system_prompt, user_prompt, count)
             if questions and isinstance(questions, list) and len(questions) > 0:
-                return self._normalise(questions, question_types, difficulty, count)
+                # Normalise standard attributes
+                normalised_qs = self._normalise(questions, question_types, difficulty, count)
+
+                # Filter duplicates within the list & against existing DB questions for this subject
+                from apps.content.models import Question
+                import re
+                from rapidfuzz import fuzz
+                
+                unique_generated = []
+                seen_texts = set()
+                for q in normalised_qs:
+                    text = q.get('text', '')
+                    norm = re.sub(r'<[^>]*>', '', text).strip().lower()
+                    if norm not in seen_texts:
+                        seen_texts.add(norm)
+                        unique_generated.append(q)
+
+                existing_qs = Question.objects.filter(subject__name=subject_name).only('text')
+                existing_texts = [re.sub(r'<[^>]*>', '', eq.text).strip().lower() for eq in existing_qs]
+                
+                final_list = []
+                for q in unique_generated:
+                    text = q.get('text', '')
+                    norm = re.sub(r'<[^>]*>', '', text).strip().lower()
+                    is_dup = False
+                    for ext in existing_texts:
+                        if fuzz.token_sort_ratio(norm, ext) > 85.0:
+                            logger.warning(f"Discarding duplicate generated question: '{text}'")
+                            is_dup = True
+                            break
+                    if not is_dup:
+                        final_list.append(q)
+
+                if final_list:
+                    return final_list
         except Exception:
             logger.exception('AI generation failed for provider=%s', self.provider)
 
@@ -394,7 +428,7 @@ class AIQuestionGenerator:
     # ------------------------------------------------------------------
 
     def _build_prompt(self, subject_name, topic_name, question_types,
-                      difficulty, count, custom_prompt):
+                      difficulty, count, custom_prompt, grade_level='', assessment_type=''):
         """Return (system_prompt, user_prompt) for the AI."""
 
         types_str = ', '.join(question_types) if question_types else 'mcq'
@@ -403,6 +437,8 @@ class AIQuestionGenerator:
             f'\n\nAdditional teacher instructions / focus area:\n{custom_prompt}'
             if custom_prompt else ''
         )
+        grade_clause = f' matching the dedicated class/grade level: "{grade_level}"' if grade_level else ''
+        assessment_clause = f' for a "{assessment_type}" assessment' if assessment_type else ''
 
         # JSON schema example
         schema_example = json.dumps([
@@ -441,10 +477,16 @@ class AIQuestionGenerator:
             "8. For ordering: options order field indicates the correct sequence.\n"
             "9. Set points to 5.0 for all questions.\n"
             "10. explanation should briefly explain WHY the correct answer is correct.\n"
+            "11. SUBJECT MATCHING: The generated questions must strictly belong to the subject and topic specified. "
+            "Under no circumstances should you generate questions from any other subject area (e.g. if the subject is Mathematics, all questions must be math problems).\n"
+            "12. CLASS LEVEL MATCHING: Ensure all generated questions strictly match the grade/class level requested. "
+            "The complexity, language, and content scope must be tailored appropriately.\n"
+            "13. ASSESSMENT STRUCTURE: Tailor the questions to follow the requested assessment type (e.g., quizzes should be shorter, while exams should be more comprehensive and rigorous).\n"
+            "14. NO DUPLICATION: Do not repeat or generate highly similar questions. Ensure a diverse range of concepts are tested."
         )
 
         user_prompt = (
-            f"Generate exactly {count} assessment question(s) for the subject "
+            f"Generate exactly {count} assessment question(s){assessment_clause}{grade_clause} for the subject "
             f"\"{subject_name}\"{topic_clause}.\n\n"
             f"Question type(s) to use (distribute evenly): {types_str}\n"
             f"Difficulty level: {difficulty}\n\n"

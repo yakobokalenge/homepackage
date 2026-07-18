@@ -447,7 +447,7 @@ onMounted(() => {
               <select v-model="filterStatus" class="px-3 py-1.5 border border-gray-200 dark:border-gray-800 rounded-lg text-xs bg-white dark:bg-gray-900 text-gray-800 dark:text-white focus:outline-none">
                 <option value="">All Statuses</option>
                 <option value="approved">Approved / Published</option>
-                <option value="pending">Pending HOD Review</option>
+                <option value="pending">Pending Review</option>
                 <option value="rejected">Rejected</option>
                 <option value="draft">Draft</option>
               </select>
@@ -521,8 +521,8 @@ onMounted(() => {
               </div>
             </div>
 
-            <!-- HOD Workflow Buttons -->
-            <div v-if="q.status === 'pending' && ['school_admin', 'super_admin'].includes(userRole)" class="flex gap-2 justify-end border-t border-gray-150 dark:border-gray-800/80 pt-3 mt-1">
+            <!-- Approval Workflow Buttons -->
+            <div v-if="q.status === 'pending' && ['teacher', 'school_admin', 'super_admin'].includes(userRole)" class="flex gap-2 justify-end border-t border-gray-150 dark:border-gray-800/80 pt-3 mt-1">
               <button
                 @click="handleApproveQuestion(q.id)"
                 class="px-3 py-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[10px] rounded-lg shadow"
@@ -538,7 +538,7 @@ onMounted(() => {
             </div>
             
             <div v-if="q.status === 'rejected' && q.metadata?.rejection_feedback" class="p-2 bg-red-50 dark:bg-red-950/20 text-red-700 dark:text-red-300 text-[10px] rounded-lg border border-red-100 dark:border-red-900/50 mt-1">
-              <strong>HOD Rejection Reason:</strong> {{ q.metadata.rejection_feedback }}
+              <strong>Rejection Reason:</strong> {{ q.metadata.rejection_feedback }}
             </div>
           </div>
         </div>

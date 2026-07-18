@@ -63,7 +63,14 @@ class QuestionCreateSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         options_data = validated_data.pop('options', [])
-        validated_data['created_by'] = self.context['request'].user
+        user = self.context['request'].user
+        validated_data['created_by'] = user
+        
+        # Enforce review workflow: non-admin creators must submit questions as pending review
+        if user.role not in ('school_admin', 'super_admin'):
+            validated_data['status'] = 'pending'
+            validated_data['is_approved'] = False
+            
         question = Question.objects.create(**validated_data)
         for opt in options_data:
             QuestionOption.objects.create(question=question, **opt)

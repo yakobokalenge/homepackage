@@ -154,14 +154,22 @@ class AssessmentViewSet(viewsets.ModelViewSet):
             if not topic and is_uuid:
                 return Response({'error': 'Topic not found.'}, status=status.HTTP_404_NOT_FOUND)
 
-        generator = AIQuestionGenerator(provider=settings.AI_QUESTION_PROVIDER)
+        provider = request.data.get('provider', settings.AI_QUESTION_PROVIDER)
+        generator = AIQuestionGenerator(provider=provider)
+
+        # Extract grade level and assessment type for AI tailoring
+        grade_level = assessment.classroom.grade_level if (assessment.classroom and assessment.classroom.grade_level) else "Form Two"
+        assessment_type = assessment.get_assessment_type_display() if hasattr(assessment, 'get_assessment_type_display') else assessment.assessment_type
+
         questions_data = generator.generate(
             subject_name=assessment.subject.name,
             topic_name=topic.name if topic else '',
             question_types=question_types,
             difficulty=difficulty,
             count=count,
-            custom_prompt=custom_prompt
+            custom_prompt=custom_prompt,
+            grade_level=grade_level,
+            assessment_type=assessment_type
         )
 
         saved_questions = []
@@ -171,7 +179,8 @@ class AssessmentViewSet(viewsets.ModelViewSet):
                 q_data['subject'] = assessment.subject.id
                 q_data['topic'] = topic.id if topic else None
                 q_data['is_public'] = False
-                q_data['is_approved'] = True
+                q_data['is_approved'] = False
+                q_data['status'] = 'pending'
                 
                 # Save question
                 serializer = QuestionCreateSerializer(data=q_data, context={'request': request})
@@ -644,6 +653,7 @@ class StagedQuestionViewSet(viewsets.ModelViewSet):
                     subject = Subject.objects.first()
 
                 # 1. Create live Question
+                is_user_admin = request.user.role in ('school_admin', 'super_admin') or request.user.is_staff
                 question = Question.objects.create(
                     created_by=request.user,
                     subject=subject,
@@ -655,7 +665,8 @@ class StagedQuestionViewSet(viewsets.ModelViewSet):
                     media=sq.media,
                     metadata=sq.metadata,
                     is_public=False,
-                    is_approved=True
+                    is_approved=is_user_admin,
+                    status='approved' if is_user_admin else 'pending'
                 )
                 
                 # 2. Create Options

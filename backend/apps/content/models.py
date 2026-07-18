@@ -78,7 +78,7 @@ class Question(models.Model):
             ('approved', 'Approved'),
             ('rejected', 'Rejected')
         ],
-        default='approved'
+        default='pending'
     )
     author_name = models.CharField(max_length=100, blank=True, default='')
     created_at = models.DateTimeField(auto_now_add=True)

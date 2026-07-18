@@ -181,8 +181,8 @@ class QuestionViewSet(viewsets.ModelViewSet):
     def approve(self, request, pk=None):
         """Head of Department workflow: Approve a question to publish it."""
         question = self.get_object()
-        if request.user.role not in ('school_admin', 'super_admin') and not request.user.is_staff:
-            return Response({'error': 'Only HOD or Admin can approve questions.'}, status=status.HTTP_403_FORBIDDEN)
+        if request.user.role not in ('teacher', 'school_admin', 'super_admin') and not request.user.is_staff:
+            return Response({'error': 'Only teachers or admins can approve questions.'}, status=status.HTTP_403_FORBIDDEN)
 
         question.status = 'approved'
         question.is_approved = True
@@ -191,10 +191,10 @@ class QuestionViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['post'])
     def reject(self, request, pk=None):
-        """Head of Department workflow: Reject a question with reviewer feedback."""
+        """Review workflow: Reject a question with feedback."""
         question = self.get_object()
-        if request.user.role not in ('school_admin', 'super_admin') and not request.user.is_staff:
-            return Response({'error': 'Only HOD or Admin can reject questions.'}, status=status.HTTP_403_FORBIDDEN)
+        if request.user.role not in ('teacher', 'school_admin', 'super_admin') and not request.user.is_staff:
+            return Response({'error': 'Only teachers or admins can reject questions.'}, status=status.HTTP_403_FORBIDDEN)
 
         feedback = request.data.get('feedback', '')
         question.status = 'rejected'
@@ -332,7 +332,9 @@ class QuestionBankViewSet(viewsets.ModelViewSet):
                             'difficulty': item.get('difficulty', 'medium'),
                             'points': str(item.get('points', 1.0)),
                             'explanation': item.get('explanation', ''),
-                            'options': item.get('options', [])
+                            'options': item.get('options', []),
+                            'status': 'pending',
+                            'is_approved': False,
                         }
                         serializer = QuestionCreateSerializer(data=q_data, context={'request': request})
                         serializer.is_valid(raise_exception=True)
@@ -377,7 +379,9 @@ class QuestionBankViewSet(viewsets.ModelViewSet):
                             'difficulty': str(diff).strip().lower(),
                             'points': str(pts),
                             'explanation': str(expl).strip() if pd.notna(expl) else '',
-                            'options': opts_list
+                            'options': opts_list,
+                            'status': 'pending',
+                            'is_approved': False,
                         }
                         serializer = QuestionCreateSerializer(data=q_data, context={'request': request})
                         serializer.is_valid(raise_exception=True)
