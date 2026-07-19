@@ -42,10 +42,5 @@ if SENTRY_DSN:
 # Static files served by whitenoise or S3
 STATICFILES_STORAGE = 'django.contrib.staticfiles.storage.ManifestStaticFilesStorage'
 
-# Logging for production
-LOGGING['handlers']['file'] = {  # noqa: F405
-    'class': 'logging.FileHandler',
-    'filename': os.environ.get('LOG_FILE', '/var/log/homepackage/app.log'),  # noqa: F405
-    'formatter': 'verbose',
-}
-LOGGING['root']['handlers'].append('file')  # noqa: F405
+# Logging for production relies entirely on standard output (console) via base.py
+# which is the best practice for Docker and PaaS platforms like Render.
