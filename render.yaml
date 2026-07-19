@@ -46,6 +46,7 @@ services:
 # 3. Managed PostgreSQL Database
 databases:
   - name: homepackage-db
+    postgresMajorVersion: "18"
     plan: free
 
 # 4. Redis Service (Private Cache / Celery Broker)
