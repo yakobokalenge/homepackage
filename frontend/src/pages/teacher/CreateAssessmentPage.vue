@@ -170,7 +170,7 @@ async function handleAddManualQuestion() {
   try {
     const payload = {
       subject: form.value.subject,
-      topic: form.value.topic || null,
+      topic: null,
       question_type: manualQuestion.value.question_type,
       difficulty: form.value.difficulty || 'medium',
       text: manualQuestion.value.text,
@@ -254,19 +254,22 @@ function moveQuestionDown(index: number) {
   })
 }
 
-function insertManualText(textToInsert: string) {
+function insertManualText(prefix: string, suffix: string = '') {
   const textarea = document.getElementById('manual-q-textarea') as HTMLTextAreaElement
   if (textarea) {
     const start = textarea.selectionStart
     const end = textarea.selectionEnd
     const currentVal = manualQuestion.value.text
-    manualQuestion.value.text = currentVal.substring(0, start) + textToInsert + currentVal.substring(end)
+    const selectedText = currentVal.substring(start, end)
+    const toInsert = suffix ? prefix + selectedText + suffix : prefix
+    manualQuestion.value.text = currentVal.substring(0, start) + toInsert + currentVal.substring(end)
     setTimeout(() => {
       textarea.focus()
-      textarea.setSelectionRange(start + textToInsert.length, start + textToInsert.length)
+      const newPos = suffix && start === end ? start + prefix.length : start + toInsert.length
+      textarea.setSelectionRange(newPos, newPos)
     }, 50)
   } else {
-    manualQuestion.value.text += textToInsert
+    manualQuestion.value.text += suffix ? prefix + suffix : prefix
   }
 }
 
