@@ -13,7 +13,8 @@ const password = ref('')
 
 async function handleLogin() {
   try {
-    await auth.login({ email: email.value, password: password.value })
+    const cleanEmail = email.value.trim()
+    await auth.login({ email: cleanEmail, password: password.value })
     const redirect = router.currentRoute.value.query.redirect as string
     let target = '/student/dashboard'
     if (auth.isTeacher) target = '/teacher/dashboard'
