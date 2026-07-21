@@ -8,7 +8,7 @@ from sentry_sdk.integrations.redis import RedisIntegration
 
 from .base import *  # noqa: F401,F403
 
-DEBUG = True
+DEBUG = False
 
 # Security settings
 SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')

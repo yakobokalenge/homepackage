@@ -85,7 +85,7 @@ WSGI_APPLICATION = 'homepackage.wsgi.application'
 ASGI_APPLICATION = 'homepackage.asgi.application'
 
 # Database
-USE_SQLITE = os.environ.get('USE_SQLITE', 'False').lower() in ('true', '1', 'yes') or not os.environ.get('DB_HOST')
+USE_SQLITE = os.environ.get('USE_SQLITE', 'False').lower() in ('true', '1', 'yes') or (not os.environ.get('DB_HOST') and not os.environ.get('DATABASE_URL'))
 
 if USE_SQLITE:
     DATABASES = {
