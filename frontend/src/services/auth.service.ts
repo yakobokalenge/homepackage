@@ -3,12 +3,12 @@ import type { AuthResponse, LoginPayload, RegisterPayload, User } from '@/types'
 
 export const authService = {
   async login(payload: LoginPayload): Promise<AuthResponse> {
-    const { data } = await api.post<AuthResponse>('/auth/login', payload)
+    const { data } = await api.post<AuthResponse>('/auth/login/', payload)
     return data
   },
 
   async register(payload: RegisterPayload): Promise<AuthResponse> {
-    const { data } = await api.post<AuthResponse>('/auth/register', payload)
+    const { data } = await api.post<AuthResponse>('/auth/register/', payload)
     return data
   },
 
@@ -33,11 +33,11 @@ export const authService = {
   },
 
   async forgotPassword(email: string): Promise<void> {
-    await api.post('/auth/forgot-password', { email })
+    await api.post('/auth/forgot-password/', { email })
   },
 
   async resetPassword(token: string, password: string): Promise<void> {
-    await api.post('/auth/reset-password', { token, password })
+    await api.post('/auth/reset-password/', { token, password })
   },
 
   async updateProfile(payload: Partial<User>): Promise<User> {
@@ -46,7 +46,7 @@ export const authService = {
   },
 
   async changePassword(currentPassword: string, newPassword: string): Promise<void> {
-    await api.post('/auth/change-password', {
+    await api.post('/auth/change-password/', {
       current_password: currentPassword,
       new_password: newPassword
     })
