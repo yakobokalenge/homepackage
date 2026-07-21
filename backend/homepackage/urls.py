@@ -49,3 +49,14 @@ if settings.DEBUG:
         urlpatterns += [path('__debug__/', include(debug_toolbar.urls))]
     except ImportError:
         pass
+
+
+from django.http import JsonResponse
+import os
+def debug_env(request):
+    return JsonResponse({
+        'DATABASE_URL': os.environ.get('DATABASE_URL', 'MISSING'),
+        'DJANGO_SETTINGS_MODULE': os.environ.get('DJANGO_SETTINGS_MODULE', 'MISSING'),
+        'DB_HOST': os.environ.get('DB_HOST', 'MISSING')
+    })
+urlpatterns.insert(0, path('debug/env/', debug_env))
