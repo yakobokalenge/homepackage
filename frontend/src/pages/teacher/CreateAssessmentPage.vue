@@ -5,6 +5,7 @@ import { useAssessmentStore } from '../../stores/assessment'
 import { useNotificationStore } from '../../stores/notification'
 import api from '../../services/api'
 import DocumentUploader from '../../components/assessment/DocumentUploader.vue'
+import AddSubjectModal from '../../components/modals/AddSubjectModal.vue'
 import { proctoringService } from '../../services/proctoring.service'
 
 import { AssessmentType, DifficultyLevel } from '../../types/assessment'
@@ -20,6 +21,12 @@ const loading = ref(false)
 // Options Lists
 const subjectsList = ref<any[]>([])
 const classroomsList = ref<any[]>([])
+
+const showAddSubjectModal = ref(false)
+function onSubjectAdded(newSubject: any) {
+  subjectsList.value.push(newSubject)
+  form.value.subject = newSubject.id
+}
 
 // Assessment Form Payload
 const form = ref({
@@ -705,7 +712,12 @@ onUnmounted(() => {
           <input type="text" v-model="form.title" placeholder="e.g. Biology Midterm Exam" class="px-3 py-2 text-xs border border-gray-300 dark:border-gray-700 rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none" />
         </div>
         <div class="flex flex-col gap-1.5">
-          <label class="text-xs font-bold text-gray-700 dark:text-gray-300">Subject</label>
+          <div class="flex items-center justify-between">
+            <label class="text-xs font-bold text-gray-700 dark:text-gray-300">Subject</label>
+            <button type="button" @click="showAddSubjectModal = true" class="text-[10px] font-bold text-blue-500 hover:text-blue-600 dark:hover:text-blue-400 flex items-center gap-1">
+              ➕ Add New
+            </button>
+          </div>
           <select v-model="form.subject" class="px-3 py-2 text-xs border border-gray-300 dark:border-gray-700 rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none">
             <option v-for="sub in subjectsList" :key="sub.id" :value="sub.id">{{ sub.name }}</option>
           </select>
@@ -1194,5 +1206,7 @@ onUnmounted(() => {
         🚀 Create & Save Assessment
       </button>
     </div>
+    
+    <AddSubjectModal v-model="showAddSubjectModal" @subject-added="onSubjectAdded" />
   </div>
 </template>
