@@ -13,6 +13,9 @@ User = get_user_model()
 @receiver(post_save, sender=User)
 def create_user_profile(sender, instance, created, **kwargs):
     """Auto-create profile based on user role when a new user is created."""
+    if kwargs.get('raw', False):
+        return
+        
     if created:
         if instance.role == User.Role.STUDENT:
             StudentProfile.objects.get_or_create(user=instance)
