@@ -96,6 +96,9 @@ const saveToBank = ref(false)
 // Draft Mode States
 const draftId = ref<string | null>(null)
 const autoSavingBackend = ref(false)
+const showPublishPrompt = ref(false)
+const savedAssessment = ref<any>(null)
+const publishing = ref(false)
 
 
 // Manual Question Creator States
@@ -600,7 +603,7 @@ function removeAllQuestions() {
 }
 
 // Final Save Assessment
-async function handleSaveAssessment() {
+async function handleSaveAssessment(targetStatus: 'draft' | 'published' = 'published') {
   if (form.value.questions_data.length === 0) {
     notificationStore.warning('Please add at least one question to the assessment.')
     return
@@ -608,16 +611,18 @@ async function handleSaveAssessment() {
 
   loading.value = true
   try {
-    // 1. Create or Update Assessment (use draft ID if already created to prevent duplicate assessments)
+    const payload = {
+      ...form.value,
+      status: targetStatus
+    }
+
+    // 1. Create or Update Assessment
     let newAssessment;
     if (draftId.value) {
-      const res = await api.put(`/assessments/assessments/${draftId.value}/`, {
-        ...form.value,
-        status: 'published' // publish it directly
-      })
+      const res = await api.put(`/assessments/assessments/${draftId.value}/`, payload)
       newAssessment = res.data
     } else {
-      newAssessment = await assessmentStore.createAssessment(form.value)
+      newAssessment = await assessmentStore.createAssessment(payload)
     }
     
     // 2. Save Proctoring configuration if enabled
@@ -628,8 +633,15 @@ async function handleSaveAssessment() {
     // 3. Clear auto-save draft
     localStorage.removeItem('homepackage_assessment_draft')
 
-    notificationStore.success('Assessment created successfully.')
-    router.push('/teacher/assessments')
+    savedAssessment.value = newAssessment
+
+    if (targetStatus === 'published') {
+      notificationStore.success('Assessment created & published successfully!')
+      router.push('/teacher/assessments')
+    } else {
+      showPublishPrompt.value = true
+      notificationStore.success('Assessment saved as draft successfully!')
+    }
   } catch (err: any) {
     const errorData = err.response?.data
     let errorMsg = 'Failed to create assessment.'
@@ -642,6 +654,20 @@ async function handleSaveAssessment() {
     notificationStore.error(errorMsg)
   } finally {
     loading.value = false
+  }
+}
+
+async function publishSavedAssessment() {
+  if (!savedAssessment.value) return
+  publishing.value = true
+  try {
+    await assessmentStore.updateAssessment(savedAssessment.value.id, { status: 'published' })
+    notificationStore.success(`Published: "${savedAssessment.value.title}" is now live for students!`)
+    router.push('/teacher/assessments')
+  } catch {
+    notificationStore.error('Failed to publish assessment.')
+  } finally {
+    publishing.value = false
   }
 }
 
@@ -1192,8 +1218,8 @@ onUnmounted(() => {
       </div>
     </div>
 
-    <!-- Navigation Buttons -->
-    <div class="flex justify-between items-center gap-4">
+    <!-- Navigation & Action Buttons -->
+    <div v-if="!showPublishPrompt" class="flex justify-between items-center gap-4">
       <button
         v-if="currentStep > 1"
         @click="currentStep--"
@@ -1211,14 +1237,50 @@ onUnmounted(() => {
         Next Step ▶
       </button>
       
-      <button
-        v-else
-        @click="handleSaveAssessment"
-        :disabled="loading"
-        class="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl shadow-md disabled:opacity-50 transition-all"
-      >
-        🚀 Create & Save Assessment
-      </button>
+      <div v-else class="flex items-center gap-3">
+        <button
+          @click="handleSaveAssessment('draft')"
+          :disabled="loading"
+          class="px-4 py-2.5 bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 text-xs font-bold rounded-xl border border-gray-300 dark:border-gray-700 transition-all"
+        >
+          💾 Save as Draft
+        </button>
+        <button
+          @click="handleSaveAssessment('published')"
+          :disabled="loading"
+          class="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl shadow-md disabled:opacity-50 transition-all flex items-center gap-2"
+        >
+          <span v-if="loading" class="animate-spin w-3 h-3 border-2 border-white border-t-transparent rounded-full"></span>
+          🚀 Save & Publish Assessment
+        </button>
+      </div>
+    </div>
+
+    <!-- Instant Publish Banner Prompt -->
+    <div v-if="showPublishPrompt" class="p-6 bg-white dark:bg-gray-900 border border-emerald-300 dark:border-emerald-700 rounded-2xl shadow-xl space-y-4">
+      <div class="flex items-center gap-3">
+        <span class="text-3xl">🎉</span>
+        <div>
+          <h3 class="text-base font-bold text-gray-900 dark:text-white">Assessment Saved Successfully!</h3>
+          <p class="text-xs text-gray-500">Your assessment "<span class="font-bold text-gray-900 dark:text-white">{{ savedAssessment?.title }}</span>" is currently saved as a draft. Click below to publish it instantly to students.</p>
+        </div>
+      </div>
+      <div class="flex flex-wrap gap-3 pt-2 border-t border-gray-150 dark:border-gray-800">
+        <button
+          @click="publishSavedAssessment"
+          :disabled="publishing"
+          class="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-md flex items-center gap-2 transition-all"
+        >
+          <span v-if="publishing" class="animate-spin w-3 h-3 border-2 border-white border-t-transparent rounded-full"></span>
+          🚀 Publish Assessment Now
+        </button>
+        <button
+          @click="router.push('/teacher/assessments')"
+          class="px-4 py-2.5 bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 text-xs font-bold rounded-xl transition-all"
+        >
+          📋 Return to Assessment Hub
+        </button>
+      </div>
     </div>
     
     <AddSubjectModal v-model="showAddSubjectModal" @subject-added="onSubjectAdded" />
