@@ -107,7 +107,7 @@ class AIQuestionGenerator:
                     norm = re.sub(r'<[^>]*>', '', text).strip().lower()
                     is_dup = False
                     for ext in existing_texts:
-                        if fuzz.token_sort_ratio(norm, ext) > 85.0:
+                        if fuzz.token_sort_ratio(norm, ext) > 92.0:
                             logger.warning(f"Discarding duplicate generated question: '{text}'")
                             is_dup = True
                             break
@@ -537,7 +537,7 @@ class AIQuestionGenerator:
 
         url = (
             'https://generativelanguage.googleapis.com/v1beta/'
-            f'models/gemini-2.0-flash:generateContent?key={api_key}'
+            f'models/gemini-flash-latest:generateContent?key={api_key}'
         )
         headers = {'Content-Type': 'application/json'}
         payload = {

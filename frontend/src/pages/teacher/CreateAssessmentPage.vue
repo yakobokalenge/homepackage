@@ -593,6 +593,12 @@ function removeQuestion(index: number) {
   form.value.questions_data.splice(index, 1)
 }
 
+// Remove all questions from local list
+function removeAllQuestions() {
+  addedQuestions.value = []
+  form.value.questions_data = []
+}
+
 // Final Save Assessment
 async function handleSaveAssessment() {
   if (form.value.questions_data.length === 0) {
@@ -1064,7 +1070,15 @@ onUnmounted(() => {
 
           <!-- Preview of added questions -->
           <div v-if="addedQuestions.length > 0" class="space-y-3">
-            <h3 class="text-xs font-bold text-gray-500 uppercase">Assessment Questions Preview ({{ addedQuestions.length }})</h3>
+            <div class="flex items-center justify-between">
+              <h3 class="text-xs font-bold text-gray-500 uppercase">Assessment Questions Preview ({{ addedQuestions.length }})</h3>
+              <button
+                @click="removeAllQuestions"
+                class="px-2.5 py-1 bg-red-50 hover:bg-red-100 dark:bg-red-900/20 dark:hover:bg-red-900/40 text-red-600 dark:text-red-400 text-[10px] font-bold rounded-lg border border-red-200 dark:border-red-800 transition-colors"
+              >
+                🗑️ Remove All
+              </button>
+            </div>
             <div
               v-for="(q, idx) in addedQuestions"
               :key="idx"

@@ -101,6 +101,11 @@ export interface AnswerResponse {
   question_type?: string
   question_points?: number
   question_text?: string
+  
+  // Enhanced fields from backend
+  selected_options_details?: { id: string; text: string; is_correct: boolean }[]
+  correct_answer_text?: string
+  question_options?: { id: string; text: string; is_correct: boolean; order: number }[]
 }
 
 export interface AssessmentAttempt {

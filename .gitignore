@@ -6,8 +6,11 @@
 # Environment & Secrets
 # =============================================================================
 .env
-.env.local
-.env.production
+.env*
+*.env
+.venv/
+*.venv/
+**/scratch/
 *.pem
 *.key
 

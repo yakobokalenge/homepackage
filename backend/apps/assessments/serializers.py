@@ -139,10 +139,60 @@ class AssessmentCreateSerializer(serializers.ModelSerializer):
 
 
 class AnswerResponseSerializer(serializers.ModelSerializer):
+    question_text = serializers.SerializerMethodField()
+    question_type = serializers.SerializerMethodField()
+    question_points = serializers.SerializerMethodField()
+    selected_options_details = serializers.SerializerMethodField()
+    correct_answer_text = serializers.SerializerMethodField()
+    question_options = serializers.SerializerMethodField()
+
     class Meta:
         model = AnswerResponse
         fields = '__all__'
         read_only_fields = ('id', 'attempt', 'is_correct', 'points_awarded', 'auto_graded', 'answered_at')
+
+    def get_question_text(self, obj):
+        return obj.question.text if obj.question else ''
+
+    def get_question_type(self, obj):
+        return obj.question.question_type if obj.question else ''
+
+    def get_question_points(self, obj):
+        # Try to get points_override from the AssessmentQuestion link
+        try:
+            aq = obj.attempt.assessment.assessment_questions.filter(question=obj.question).first()
+            if aq and aq.points_override is not None:
+                return float(aq.points_override)
+        except Exception:
+            pass
+        return float(obj.question.points) if obj.question else 5.0
+
+    def get_selected_options_details(self, obj):
+        if not obj.selected_options:
+            return []
+        from apps.content.models import QuestionOption
+        options = QuestionOption.objects.filter(id__in=obj.selected_options)
+        return [{'id': str(o.id), 'text': o.text, 'is_correct': o.is_correct} for o in options]
+
+    def get_correct_answer_text(self, obj):
+        if not obj.question:
+            return ''
+        q = obj.question
+        if q.question_type in ('mcq', 'true_false', 'multi_select'):
+            correct_opts = q.options.filter(is_correct=True)
+            return ', '.join([o.text for o in correct_opts])
+        elif q.question_type == 'fill_blank':
+            correct_opts = q.options.filter(is_correct=True)
+            return ', '.join([o.text for o in correct_opts]) if correct_opts.exists() else ''
+        return ''
+
+    def get_question_options(self, obj):
+        if not obj.question:
+            return []
+        return [
+            {'id': str(o.id), 'text': o.text, 'is_correct': o.is_correct, 'order': o.order}
+            for o in obj.question.options.all().order_by('order')
+        ]
 
     def validate(self, attrs):
         # Additional validation can go here
