@@ -14,13 +14,14 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
     password_confirm = serializers.CharField(write_only=True, min_length=8)
     school = serializers.UUIDField(required=False, write_only=True, allow_null=True)
     classroom = serializers.UUIDField(required=False, write_only=True, allow_null=True)
+    education_level = serializers.CharField(required=False, write_only=True, default='secondary_o')
 
     class Meta:
         model = User
         fields = [
             'id', 'email', 'phone', 'first_name', 'last_name',
             'role', 'password', 'password_confirm',
-            'school', 'classroom',
+            'school', 'classroom', 'education_level',
         ]
         read_only_fields = ['id']
 
@@ -57,6 +58,7 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         school_id = validated_data.pop('school', None)
         classroom_id = validated_data.pop('classroom', None)
+        education_level = validated_data.pop('education_level', 'secondary_o')
         
         user = User.objects.create_user(**validated_data)
         
@@ -66,11 +68,13 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
                 profile.school_id = school_id
             if classroom_id:
                 profile.classroom_id = classroom_id
+            profile.education_level = education_level
             profile.save()
         elif user.role == User.Role.TEACHER:
             profile, _ = TeacherProfile.objects.get_or_create(user=user)
             if school_id:
                 profile.school_id = school_id
+            profile.education_level = education_level
             profile.save()
             
             if classroom_id:
@@ -150,6 +154,7 @@ class UserSerializer(serializers.ModelSerializer):
     full_name = serializers.ReadOnlyField()
     school_id = serializers.SerializerMethodField()
     school_name = serializers.SerializerMethodField()
+    education_level = serializers.SerializerMethodField()
 
     class Meta:
         model = User
@@ -157,28 +162,35 @@ class UserSerializer(serializers.ModelSerializer):
             'id', 'email', 'phone', 'first_name', 'last_name',
             'full_name', 'role', 'auth_provider', 'avatar',
             'is_active', 'is_verified', 'date_joined', 'last_login',
-            'school_id', 'school_name'
+            'school_id', 'school_name', 'education_level'
         ]
         read_only_fields = [
             'id', 'role', 'auth_provider', 'is_active',
             'is_verified', 'date_joined', 'last_login',
         ]
 
+    def get_education_level(self, obj):
+        if hasattr(obj, 'student_profile') and obj.student_profile and obj.student_profile.education_level:
+            return obj.student_profile.education_level
+        if hasattr(obj, 'teacher_profile') and obj.teacher_profile and obj.teacher_profile.education_level:
+            return obj.teacher_profile.education_level
+        return 'secondary_o'
+
     def get_school_id(self, obj):
-        if hasattr(obj, 'student_profile') and obj.student_profile.school:
+        if hasattr(obj, 'student_profile') and obj.student_profile and obj.student_profile.school:
             return obj.student_profile.school.id
-        if hasattr(obj, 'teacher_profile') and obj.teacher_profile.school:
+        if hasattr(obj, 'teacher_profile') and obj.teacher_profile and obj.teacher_profile.school:
             return obj.teacher_profile.school.id
-        if hasattr(obj, 'school_admin_profile') and obj.school_admin_profile.school:
+        if hasattr(obj, 'school_admin_profile') and obj.school_admin_profile and obj.school_admin_profile.school:
             return obj.school_admin_profile.school.id
         return None
 
     def get_school_name(self, obj):
-        if hasattr(obj, 'student_profile') and obj.student_profile.school:
+        if hasattr(obj, 'student_profile') and obj.student_profile and obj.student_profile.school:
             return obj.student_profile.school.name
-        if hasattr(obj, 'teacher_profile') and obj.teacher_profile.school:
+        if hasattr(obj, 'teacher_profile') and obj.teacher_profile and obj.teacher_profile.school:
             return obj.teacher_profile.school.name
-        if hasattr(obj, 'school_admin_profile') and obj.school_admin_profile.school:
+        if hasattr(obj, 'school_admin_profile') and obj.school_admin_profile and obj.school_admin_profile.school:
             return obj.school_admin_profile.school.name
         return None
 
@@ -248,7 +260,7 @@ class TeacherProfileSerializer(serializers.ModelSerializer):
     class Meta:
         model = TeacherProfile
         fields = [
-            'id', 'user', 'school', 'employee_id', 'qualification',
+            'id', 'user', 'school', 'education_level', 'employee_id', 'qualification',
             'specialization', 'years_of_experience', 'bio',
             'is_approved', 'created_at', 'updated_at',
         ]
@@ -261,6 +273,6 @@ class TeacherProfileUpdateSerializer(serializers.ModelSerializer):
     class Meta:
         model = TeacherProfile
         fields = [
-            'school', 'employee_id', 'qualification',
+            'school', 'education_level', 'employee_id', 'qualification',
             'specialization', 'years_of_experience', 'bio',
         ]

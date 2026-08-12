@@ -6,6 +6,7 @@ export interface User {
   last_name: string
   role: 'student' | 'teacher' | 'admin' | 'super_admin' | 'school_admin'
   avatar_url?: string
+  education_level?: string
   is_active: boolean
   email_verified: boolean
   created_at: string
@@ -17,6 +18,7 @@ export interface StudentProfile {
   id: string
   user_id: string
   school_name?: string
+  education_level?: string
   grade_level?: string
   region?: string
   date_of_birth?: string
@@ -30,6 +32,7 @@ export interface TeacherProfile {
   id: string
   user_id: string
   school_name?: string
+  education_level?: string
   employee_id?: string
   subjects: string[]
   region?: string
@@ -53,6 +56,7 @@ export interface RegisterPayload {
   role: 'student' | 'teacher'
   school?: string
   classroom?: string
+  education_level?: string
 }
 
 export interface AuthResponse {

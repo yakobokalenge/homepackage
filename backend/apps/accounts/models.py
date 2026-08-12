@@ -138,6 +138,11 @@ class TeacherProfile(models.Model):
         'schools.School', on_delete=models.SET_NULL, null=True, blank=True,
         related_name='teachers'
     )
+    education_level = models.CharField(
+        max_length=20,
+        choices=StudentProfile.EducationLevel.choices,
+        default=StudentProfile.EducationLevel.SECONDARY_O
+    )
     employee_id = models.CharField(max_length=50, blank=True, default='')
     qualification = models.CharField(
         max_length=20, choices=Qualification.choices, default=Qualification.BACHELOR

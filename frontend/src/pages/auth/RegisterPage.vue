@@ -17,6 +17,7 @@ const form = ref({
   password: '',
   confirm_password: '',
   role: 'student' as 'student' | 'teacher',
+  education_level: 'secondary_o',
   region: '',
   school: '',
   classroom: ''
@@ -161,6 +162,7 @@ async function handleRegister() {
       last_name: form.value.last_name,
       phone: form.value.phone,
       role: form.value.role,
+      education_level: form.value.education_level,
       school: form.value.school || undefined,
       classroom: form.value.classroom || undefined,
     })
@@ -190,6 +192,22 @@ async function handleRegister() {
             <span class="text-sm font-medium">{{ t('auth.teacher') }}</span>
           </button>
         </div>
+      </div>
+
+      <!-- Education Level Selection -->
+      <div>
+        <label class="block text-xs font-medium text-blue-100 mb-1">Education Level <span class="text-amber-400">*</span></label>
+        <select
+          v-model="form.education_level"
+          required
+          class="w-full px-3 py-2 rounded-xl bg-white/10 border border-white/20 text-white placeholder-blue-300/50 focus:ring-2 focus:ring-amber-400 focus:outline-none text-sm [&>option]:text-gray-900"
+        >
+          <option value="primary">Primary School (Standard 1–7)</option>
+          <option value="secondary_o">O-Level Secondary (Form 1–4)</option>
+          <option value="secondary_a">A-Level Secondary (Form 5–6)</option>
+          <option value="college">College / Diploma / VETA</option>
+          <option value="university">University / Degree</option>
+        </select>
       </div>
 
       <!-- Names -->
