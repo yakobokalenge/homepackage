@@ -185,6 +185,29 @@ class QuestionViewSet(viewsets.ModelViewSet):
         question.save()
         return Response({'status': 'rejected', 'message': 'Question rejected successfully.', 'feedback': feedback})
 
+    @action(detail=False, methods=['post'])
+    def upload_media(self, request):
+        """Upload an image file for a question and return its accessible media URL."""
+        image_file = request.FILES.get('file') or request.FILES.get('image')
+        if not image_file:
+            return Response({'error': 'No image file provided.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        from django.core.files.storage import default_storage
+        from django.core.files.base import ContentFile
+        from django.conf import settings
+        import uuid
+        import os
+
+        ext = os.path.splitext(image_file.name)[1].lower()
+        if ext not in ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.svg']:
+            return Response({'error': 'Unsupported image format. Allowed: JPG, PNG, GIF, WEBP, SVG.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        filename = f"question_images/{uuid.uuid4().hex}{ext}"
+        saved_path = default_storage.save(filename, ContentFile(image_file.read()))
+        media_url = settings.MEDIA_URL + saved_path
+
+        return Response({'url': media_url, 'path': saved_path}, status=status.HTTP_201_CREATED)
+
 
 class QuestionBankViewSet(viewsets.ModelViewSet):
     queryset = QuestionBank.objects.select_related('subject', 'created_by')

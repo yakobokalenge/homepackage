@@ -268,6 +268,100 @@ function moveQuestionDown(index: number) {
 }
 
 const manualEditorRef = ref<HTMLDivElement | null>(null)
+const imageFileInput = ref<HTMLInputElement | null>(null)
+const isDraggingImage = ref(false)
+const uploadingImage = ref(false)
+const showImageModal = ref(false)
+const imageUrlInput = ref('')
+
+function openImagePicker() {
+  showImageModal.value = true
+}
+
+function triggerFileBrowse() {
+  if (imageFileInput.value) {
+    imageFileInput.value.click()
+  }
+}
+
+async function uploadAndEmbedFile(file: File) {
+  if (!file.type.startsWith('image/')) {
+    notificationStore.warning('Please select a valid image file.')
+    return
+  }
+
+  uploadingImage.value = true
+  try {
+    const formData = new FormData()
+    formData.append('file', file)
+    const { data } = await api.post('/content/questions/upload_media/', formData)
+    const imgUrl = data.url
+
+    embedImageHtml(imgUrl)
+    notificationStore.success('Image embedded successfully!')
+    showImageModal.value = false
+  } catch (err) {
+    const reader = new FileReader()
+    reader.onload = (e) => {
+      if (e.target?.result) {
+        embedImageHtml(e.target.result as string)
+        notificationStore.success('Image embedded successfully!')
+        showImageModal.value = false
+      }
+    }
+    reader.readAsDataURL(file)
+  } finally {
+    uploadingImage.value = false
+  }
+}
+
+function embedImageHtml(url: string) {
+  if (manualEditorRef.value) {
+    manualEditorRef.value.focus()
+    const imgHtml = `<img src="${url}" class="my-3 max-w-full rounded-xl shadow-sm block cursor-pointer" alt="Question Image" />`
+    document.execCommand('insertHTML', false, imgHtml)
+    updateManualQuestionText()
+  }
+}
+
+function handleImageUrlSubmit() {
+  if (imageUrlInput.value && imageUrlInput.value.trim()) {
+    embedImageHtml(imageUrlInput.value.trim())
+    imageUrlInput.value = ''
+    showImageModal.value = false
+  }
+}
+
+function handleFileBrowseChange(event: Event) {
+  const input = event.target as HTMLInputElement
+  if (input.files && input.files[0]) {
+    uploadAndEmbedFile(input.files[0])
+    input.value = ''
+  }
+}
+
+function handleDragOver(e: DragEvent) {
+  e.preventDefault()
+  isDraggingImage.value = true
+}
+
+function handleDragLeave(e: DragEvent) {
+  e.preventDefault()
+  isDraggingImage.value = false
+}
+
+function handleDrop(e: DragEvent) {
+  e.preventDefault()
+  isDraggingImage.value = false
+  if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+    const file = e.dataTransfer.files[0]
+    if (file.type.startsWith('image/')) {
+      uploadAndEmbedFile(file)
+    } else {
+      notificationStore.warning('Only image files can be dropped here.')
+    }
+  }
+}
 
 function execEditorCommand(command: string, value: string | undefined = undefined) {
   if (manualEditorRef.value) {
@@ -282,13 +376,6 @@ function insertSymbol(symbol: string) {
     manualEditorRef.value.focus()
     document.execCommand('insertText', false, symbol)
     updateManualQuestionText()
-  }
-}
-
-function insertImageDialog() {
-  const url = prompt('Enter Image URL:')
-  if (url && url.trim()) {
-    execEditorCommand('insertImage', url.trim())
   }
 }
 
@@ -1012,17 +1099,41 @@ onUnmounted(() => {
                         <button @click="insertSymbol('π')" type="button" title="Pi" class="px-1.5 py-0.5 text-[11px] hover:bg-gray-200 dark:hover:bg-gray-700 rounded font-mono text-gray-700 dark:text-gray-300">π</button>
                         <button @click="insertSymbol('∑')" type="button" title="Sum" class="px-1.5 py-0.5 text-[11px] hover:bg-gray-200 dark:hover:bg-gray-700 rounded font-mono text-gray-700 dark:text-gray-300">∑</button>
                         <span class="w-px h-3 bg-gray-300 dark:bg-gray-650 mx-1"></span>
-                        <button @click="insertImageDialog" type="button" title="Insert Image" class="px-2 py-0.5 text-[11px] hover:bg-gray-200 dark:hover:bg-gray-700 rounded text-gray-700 dark:text-gray-300">🖼️ Image</button>
+                        <button @click="openImagePicker" type="button" title="Insert Image (Browse or Drag & Drop)" class="px-2 py-0.5 text-[11px] hover:bg-gray-200 dark:hover:bg-gray-700 rounded text-gray-700 dark:text-gray-300">🖼️ Image</button>
                       </div>
                     </div>
-                    <!-- Visual Rich Text Editor -->
-                    <div
-                      ref="manualEditorRef"
-                      contenteditable="true"
-                      @input="updateManualQuestionText"
-                      @blur="updateManualQuestionText"
-                      class="min-h-[100px] max-h-[300px] overflow-y-auto px-3 py-2 text-xs border border-gray-300 dark:border-gray-700 rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50 leading-relaxed"
-                    ></div>
+
+                    <!-- Hidden Local File Input -->
+                    <input
+                      type="file"
+                      ref="imageFileInput"
+                      accept="image/*"
+                      class="hidden"
+                      @change="handleFileBrowseChange"
+                    />
+
+                    <!-- Visual Rich Text Editor with Drag & Drop Area -->
+                    <div class="relative">
+                      <div
+                        ref="manualEditorRef"
+                        contenteditable="true"
+                        @input="updateManualQuestionText"
+                        @blur="updateManualQuestionText"
+                        @dragover="handleDragOver"
+                        @dragenter="handleDragOver"
+                        @dragleave="handleDragLeave"
+                        @drop="handleDrop"
+                        class="min-h-[120px] max-h-[350px] overflow-y-auto px-3 py-2 text-xs border border-gray-300 dark:border-gray-700 rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50 leading-relaxed transition-all"
+                        :class="{ 'border-2 border-dashed border-blue-500 bg-blue-50/20 dark:bg-blue-900/20': isDraggingImage }"
+                      ></div>
+
+                      <!-- Drag Overlay Indicator -->
+                      <div v-if="isDraggingImage" class="absolute inset-0 z-10 bg-blue-500/10 backdrop-blur-[1px] border-2 border-dashed border-blue-500 rounded-xl flex items-center justify-center pointer-events-none">
+                        <div class="bg-blue-600 text-white text-xs font-bold px-3 py-1.5 rounded-xl shadow-lg flex items-center gap-2">
+                          📥 Drop Image Here to Embed
+                        </div>
+                      </div>
+                    </div>
                 </div>
                 <div class="flex flex-col gap-1.5">
                   <label class="text-xs font-bold text-gray-700 dark:text-gray-300">Question Type</label>
@@ -1308,5 +1419,39 @@ onUnmounted(() => {
     </div>
     
     <AddSubjectModal v-model="showAddSubjectModal" @subject-added="onSubjectAdded" />
+
+    <!-- Image Browse / Embed Modal -->
+    <div v-if="showImageModal" class="fixed inset-0 z-[110] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+      <div class="bg-white dark:bg-gray-900 rounded-3xl p-6 w-full max-w-md border border-gray-100 dark:border-gray-800 shadow-2xl space-y-4">
+        <div class="flex justify-between items-center">
+          <h3 class="text-sm font-bold text-gray-900 dark:text-white flex items-center gap-2">🖼️ Insert Image</h3>
+          <button @click="showImageModal = false" class="text-gray-400 hover:text-gray-600 dark:hover:text-white p-1 rounded-lg">❌</button>
+        </div>
+
+        <!-- Local File Browse Area -->
+        <div class="p-5 border-2 border-dashed border-gray-300 dark:border-gray-700 hover:border-blue-500 rounded-2xl text-center cursor-pointer transition-all bg-gray-50 dark:bg-gray-800/50" @click="triggerFileBrowse">
+          <span class="text-3xl block mb-1">📁</span>
+          <p class="text-xs font-bold text-gray-800 dark:text-gray-200">Click to browse local files</p>
+          <p class="text-[10px] text-gray-500 mt-0.5">Supports PNG, JPG, WEBP, GIF, SVG</p>
+        </div>
+
+        <div class="flex items-center gap-2">
+          <span class="h-px bg-gray-200 dark:bg-gray-700 flex-1"></span>
+          <span class="text-[10px] font-bold text-gray-400 uppercase">OR PASTE IMAGE URL</span>
+          <span class="h-px bg-gray-200 dark:bg-gray-700 flex-1"></span>
+        </div>
+
+        <!-- Web Image URL -->
+        <div class="flex gap-2">
+          <input
+            v-model="imageUrlInput"
+            placeholder="https://example.com/image.png"
+            class="flex-1 px-3 py-2 text-xs border border-gray-300 dark:border-gray-700 rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none"
+            @keyup.enter="handleImageUrlSubmit"
+          />
+          <button @click="handleImageUrlSubmit" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl">Embed</button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
