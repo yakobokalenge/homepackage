@@ -204,6 +204,9 @@ async function handleAddManualQuestion() {
     })
 
     // Reset manual question text while keeping the question type
+    if (manualEditorRef.value) {
+      manualEditorRef.value.innerHTML = ''
+    }
     manualQuestion.value.text = ''
     if (manualQuestion.value.question_type === 'mcq') {
       manualQuestion.value.options = [
@@ -264,22 +267,34 @@ function moveQuestionDown(index: number) {
   })
 }
 
-function insertManualText(prefix: string, suffix: string = '') {
-  const textarea = document.getElementById('manual-q-textarea') as HTMLTextAreaElement
-  if (textarea) {
-    const start = textarea.selectionStart
-    const end = textarea.selectionEnd
-    const currentVal = manualQuestion.value.text
-    const selectedText = currentVal.substring(start, end)
-    const toInsert = suffix ? prefix + selectedText + suffix : prefix
-    manualQuestion.value.text = currentVal.substring(0, start) + toInsert + currentVal.substring(end)
-    setTimeout(() => {
-      textarea.focus()
-      const newPos = suffix && start === end ? start + prefix.length : start + toInsert.length
-      textarea.setSelectionRange(newPos, newPos)
-    }, 50)
-  } else {
-    manualQuestion.value.text += suffix ? prefix + suffix : prefix
+const manualEditorRef = ref<HTMLDivElement | null>(null)
+
+function execEditorCommand(command: string, value: string | undefined = undefined) {
+  if (manualEditorRef.value) {
+    manualEditorRef.value.focus()
+    document.execCommand(command, false, value)
+    updateManualQuestionText()
+  }
+}
+
+function insertSymbol(symbol: string) {
+  if (manualEditorRef.value) {
+    manualEditorRef.value.focus()
+    document.execCommand('insertText', false, symbol)
+    updateManualQuestionText()
+  }
+}
+
+function insertImageDialog() {
+  const url = prompt('Enter Image URL:')
+  if (url && url.trim()) {
+    execEditorCommand('insertImage', url.trim())
+  }
+}
+
+function updateManualQuestionText() {
+  if (manualEditorRef.value) {
+    manualQuestion.value.text = manualEditorRef.value.innerHTML
   }
 }
 
@@ -982,23 +997,32 @@ onUnmounted(() => {
             <div v-show="questionTab === 'manual'" class="space-y-4">
               <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div class="flex flex-col gap-1.5 sm:col-span-2">
-                  <div class="flex items-center justify-between">
-                    <label class="text-xs font-bold text-gray-700 dark:text-gray-300">Question Text</label>
-                    <!-- WYSIWYG Formatter Toolbar -->
-                    <div class="flex flex-wrap items-center gap-1 bg-gray-50 dark:bg-gray-800 p-1 rounded-xl border border-gray-250 dark:border-gray-700">
-                      <button @click="insertManualText('<strong>', '</strong>')" type="button" title="Bold" class="px-1.5 py-0.5 text-[10px] font-bold hover:bg-gray-200 dark:hover:bg-gray-700 rounded text-gray-700 dark:text-gray-300">B</button>
-                      <button @click="insertManualText('<em>', '</em>')" type="button" title="Italic" class="px-1.5 py-0.5 text-[10px] font-serif italic hover:bg-gray-200 dark:hover:bg-gray-700 rounded text-gray-700 dark:text-gray-300">I</button>
-                      <button @click="insertManualText('<ul>\n  <li>', '</li>\n</ul>')" type="button" title="List" class="px-1.5 py-0.5 text-[10px] hover:bg-gray-200 dark:hover:bg-gray-700 rounded text-gray-700 dark:text-gray-300">FormatList</button>
-                      <span class="w-px h-3 bg-gray-300 dark:bg-gray-650 mx-1"></span>
-                      <button @click="insertManualText('√(', ')')" type="button" title="Square Root" class="px-1.5 py-0.5 text-[10px] hover:bg-gray-200 dark:hover:bg-gray-700 rounded font-mono text-gray-700 dark:text-gray-300">√</button>
-                      <button @click="insertManualText('<sup>a</sup>&frasl;<sub>b</sub>')" type="button" title="Fraction" class="px-1.5 py-0.5 text-[10px] hover:bg-gray-200 dark:hover:bg-gray-700 rounded font-mono text-gray-700 dark:text-gray-300">½</button>
-                      <button @click="insertManualText('π')" type="button" title="Pi" class="px-1.5 py-0.5 text-[10px] hover:bg-gray-200 dark:hover:bg-gray-700 rounded font-mono text-gray-700 dark:text-gray-300">π</button>
-                      <button @click="insertManualText('∑')" type="button" title="Sum" class="px-1.5 py-0.5 text-[10px] hover:bg-gray-200 dark:hover:bg-gray-700 rounded font-mono text-gray-700 dark:text-gray-300">∑</button>
-                      <span class="w-px h-3 bg-gray-300 dark:bg-gray-650 mx-1"></span>
-                      <button @click="insertManualText('<img src=\'https://example.com/image.png\' class=\'my-4 max-w-full rounded-xl shadow-sm block\' />')" type="button" title="Insert Image" class="px-1.5 py-0.5 text-[10px] hover:bg-gray-200 dark:hover:bg-gray-700 rounded text-gray-700 dark:text-gray-300">InsertPhoto</button>
+                    <div class="flex items-center justify-between">
+                      <label class="text-xs font-bold text-gray-700 dark:text-gray-300">Question Text</label>
+                      <!-- WYSIWYG Formatter Toolbar -->
+                      <div class="flex flex-wrap items-center gap-1 bg-gray-50 dark:bg-gray-800 p-1 rounded-xl border border-gray-250 dark:border-gray-700">
+                        <button @click="execEditorCommand('bold')" type="button" title="Bold" class="px-2 py-0.5 text-[11px] font-bold hover:bg-gray-200 dark:hover:bg-gray-700 rounded text-gray-700 dark:text-gray-300">B</button>
+                        <button @click="execEditorCommand('italic')" type="button" title="Italic" class="px-2 py-0.5 text-[11px] font-serif italic hover:bg-gray-200 dark:hover:bg-gray-700 rounded text-gray-700 dark:text-gray-300">I</button>
+                        <button @click="execEditorCommand('underline')" type="button" title="Underline" class="px-2 py-0.5 text-[11px] underline hover:bg-gray-200 dark:hover:bg-gray-700 rounded text-gray-700 dark:text-gray-300">U</button>
+                        <button @click="execEditorCommand('insertUnorderedList')" type="button" title="Bullet List" class="px-2 py-0.5 text-[11px] hover:bg-gray-200 dark:hover:bg-gray-700 rounded text-gray-700 dark:text-gray-300">• List</button>
+                        <button @click="execEditorCommand('insertOrderedList')" type="button" title="Numbered List" class="px-2 py-0.5 text-[11px] hover:bg-gray-200 dark:hover:bg-gray-700 rounded text-gray-700 dark:text-gray-300">1. List</button>
+                        <span class="w-px h-3 bg-gray-300 dark:bg-gray-650 mx-1"></span>
+                        <button @click="insertSymbol('√(')" type="button" title="Square Root" class="px-1.5 py-0.5 text-[11px] hover:bg-gray-200 dark:hover:bg-gray-700 rounded font-mono text-gray-700 dark:text-gray-300">√</button>
+                        <button @click="insertSymbol('½')" type="button" title="Fraction" class="px-1.5 py-0.5 text-[11px] hover:bg-gray-200 dark:hover:bg-gray-700 rounded font-mono text-gray-700 dark:text-gray-300">½</button>
+                        <button @click="insertSymbol('π')" type="button" title="Pi" class="px-1.5 py-0.5 text-[11px] hover:bg-gray-200 dark:hover:bg-gray-700 rounded font-mono text-gray-700 dark:text-gray-300">π</button>
+                        <button @click="insertSymbol('∑')" type="button" title="Sum" class="px-1.5 py-0.5 text-[11px] hover:bg-gray-200 dark:hover:bg-gray-700 rounded font-mono text-gray-700 dark:text-gray-300">∑</button>
+                        <span class="w-px h-3 bg-gray-300 dark:bg-gray-650 mx-1"></span>
+                        <button @click="insertImageDialog" type="button" title="Insert Image" class="px-2 py-0.5 text-[11px] hover:bg-gray-200 dark:hover:bg-gray-700 rounded text-gray-700 dark:text-gray-300">🖼️ Image</button>
+                      </div>
                     </div>
-                  </div>
-                  <textarea id="manual-q-textarea" v-model="manualQuestion.text" rows="3" placeholder="Enter the question here..." class="px-3 py-2 text-xs border border-gray-300 dark:border-gray-700 rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none"></textarea>
+                    <!-- Visual Rich Text Editor -->
+                    <div
+                      ref="manualEditorRef"
+                      contenteditable="true"
+                      @input="updateManualQuestionText"
+                      @blur="updateManualQuestionText"
+                      class="min-h-[100px] max-h-[300px] overflow-y-auto px-3 py-2 text-xs border border-gray-300 dark:border-gray-700 rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50 leading-relaxed"
+                    ></div>
                 </div>
                 <div class="flex flex-col gap-1.5">
                   <label class="text-xs font-bold text-gray-700 dark:text-gray-300">Question Type</label>
